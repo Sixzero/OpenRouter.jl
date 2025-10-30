@@ -1,0 +1,14 @@
+name = "OpenRouter"
+uuid = "b1229eab-bc7b-489c-92b5-04baf87d8d0b"
+authors = ["SixZero <havliktomi@hotmail.com> and contributors"]
+version = "1.0.0-DEV"
+
+[compat]
+julia = "1.11"
+
+[extras]
+Aqua = "4c88cf16-eb10-579e-8560-4a9242c79595"
+Test = "8dfed614-e22c-5e08-85e1-65c5234f0b40"
+
+[targets]
+test = ["Aqua", "Test"]
