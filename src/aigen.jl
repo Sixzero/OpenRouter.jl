@@ -2,18 +2,24 @@ using HTTP
 using JSON3
 
 """
-    aigen(prompt::String, provider_model::String; 
+    aigen(prompt, provider_model::String; 
+          schema::Union{AbstractRequestSchema, Nothing} = nothing,
           api_key::Union{String, Nothing} = nothing,
+          sys_msg = nothing,
+          stream_callback::Union{Nothing, AbstractLLMStream} = nothing,
           kwargs...)
 
 Generate text using a specific provider and model.
 
 # Arguments
-- `prompt::String`: The input prompt
+- `prompt`: The input prompt (String or Vector of message dicts)
 - `provider_model::String`: Format "Provider:model/slug" (e.g., "Together:moonshotai/kimi-k2-thinking")
 
 # Keyword Arguments
+- `schema::Union{AbstractRequestSchema, Nothing}`: Request schema to use (auto-detected if not provided)
 - `api_key::Union{String, Nothing}`: Provider-specific API key (auto-detected from env if not provided)
+- `sys_msg`: System message/instruction
+- `stream_callback::Union{Nothing, AbstractLLMStream}`: Stream callback for real-time processing
 - `kwargs...`: Additional API parameters
 
 # Returns
@@ -23,173 +29,127 @@ Generate text using a specific provider and model.
 ```julia
 response = aigen("Write a haiku about Julia programming", "Together:moonshotai/kimi-k2-thinking")
 println(response)
+
+# Using system message
+response = aigen("Hello", "Anthropic:claude-3-sonnet"; sys_msg="You are a helpful assistant")
+
+# Using streaming
+using OpenRouter
+callback = HttpStreamCallback(; out=stdout)
+response = aigen("Count to 10", "anthropic:anthropic/claude-haiku-4.5"; stream_callback=callback)
 ```
 """
-function aigen(prompt::String, provider_model::String; 
+function aigen(prompt, provider_model::String; 
+               schema::Union{AbstractRequestSchema, Nothing} = nothing,
                api_key::Union{String, Nothing} = nothing,
+               sys_msg = nothing,
+               stream_callback::Union{Nothing, AbstractLLMStream} = nothing,
                kwargs...)
     
-    provider_name, model_id = parse_provider_model(provider_model)
-    @show provider_name
-    @show model_id
+    provider_info, model_id = parse_provider_model(provider_model)
+    result = _aigen_core(prompt, provider_info, model_id; schema=schema, api_key=api_key, sys_msg=sys_msg, stream_callback=stream_callback, kwargs...)
     
-    # Get provider info
-    provider_info = get_provider_info(lowercase(provider_name))
-    @show provider_info
-    provider_info === nothing && throw(ArgumentError("Unknown provider: $provider_name"))
-    
-    # Get API key
-    if api_key === nothing
-        if provider_info.api_key_env_var !== nothing
-            api_key = get(ENV, provider_info.api_key_env_var, "")
-            isempty(api_key) && throw(ArgumentError("API key not found in environment variable $(provider_info.api_key_env_var)"))
-        else
-            throw(ArgumentError("No API key provided and no standard env var for provider $provider_name"))
-        end
+    # Get schema for extraction if not provided
+    if schema === nothing
+        schema = get_provider_schema(provider_info)
     end
     
-    # Build request payload
-    payload = Dict{String, Any}(
-        "model" => model_id,
-        "messages" => [Dict("role" => "user", "content" => prompt)]
-    )
-    
-    # Add any additional kwargs
-    for (k, v) in kwargs
-        payload[string(k)] = v
-    end
-    
-    # Build headers
-    auth_header = get_provider_auth_header(lowercase(provider_name), api_key)
-    auth_header === nothing && throw(ArgumentError("Failed to build auth header for provider $provider_name"))
-    
-    headers = [
-        auth_header,
-        "Content-Type" => "application/json"
-    ]
-    
-    # Add default headers for this provider
-    for (k, v) in provider_info.default_headers
-        push!(headers, k => v)
-    end
-    
-    # Build URL
-    url = "$(provider_info.base_url)/chat/completions"
-    
-    try
-        response = HTTP.post(url, headers, JSON3.write(payload))
-        
-        if response.status != 200
-            error("API request failed with status $(response.status): $(String(response.body))")
-        end
-        
-        result = JSON3.read(response.body)
-        
-        # Extract the generated text
-        if haskey(result, :choices) && length(result.choices) > 0
-            choice = result.choices[1]
-            if haskey(choice, :message) && haskey(choice.message, :content)
-                return choice.message.content
-            end
-        end
-        
-        error("Unexpected response format from API")
-        
-    catch e
-        if e isa HTTP.ExceptionRequest.StatusError
-            error("API request failed: $(e.response.status) - $(String(e.response.body))")
-        else
-            rethrow(e)
-        end
-    end
+    # Extract content using schema
+    return extract_content(schema, result)
 end
 
 """
-    parse_provider_model(provider_model::String)::Tuple{String, String}
-
-Parse "Provider:model/slug" format into provider name and model ID.
-"""
-function parse_provider_model(provider_model::String)::Tuple{String, String}
-    parts = split(provider_model, ":", limit=2)
-    length(parts) != 2 && throw(ArgumentError("Invalid format. Use 'Provider:model/slug'"))
-    
-    provider_name = strip(parts[1])
-    model_id = strip(parts[2])
-    
-    isempty(provider_name) && throw(ArgumentError("Provider name cannot be empty"))
-    isempty(model_id) && throw(ArgumentError("Model ID cannot be empty"))
-    
-    return provider_name, model_id
-end
-
-"""
-    aigen_raw(prompt::String, provider_model::String; kwargs...)
+    aigen_raw(prompt, provider_model::String; 
+              schema::Union{AbstractRequestSchema, Nothing} = nothing,
+              sys_msg = nothing,
+              stream_callback::Union{Nothing, AbstractLLMStream} = nothing,
+              kwargs...)
 
 Generate text and return the raw API response as a dictionary.
 Useful for accessing usage statistics, multiple choices, etc.
 """
-function aigen_raw(prompt::String, provider_model::String; 
+function aigen_raw(prompt, provider_model::String; 
+                   schema::Union{AbstractRequestSchema, Nothing} = nothing,
                    api_key::Union{String, Nothing} = nothing,
+                   sys_msg = nothing,
+                   stream_callback::Union{Nothing, AbstractLLMStream} = nothing,
                    kwargs...)
     
-    provider_name, model_id = parse_provider_model(provider_model)
+    provider_info, model_id = parse_provider_model(provider_model)
+    return _aigen_core(prompt, provider_info, model_id; schema=schema, api_key=api_key, sys_msg=sys_msg, stream_callback=stream_callback, kwargs...)
+end
+
+"""
+Core function that handles both streaming and non-streaming API calls.
+"""
+function _aigen_core(prompt, provider_info::ProviderInfo, model_id::AbstractString; 
+                     schema::Union{AbstractRequestSchema, Nothing} = nothing,
+                     api_key::Union{AbstractString, Nothing} = nothing,
+                     sys_msg = nothing,
+                     stream_callback::Union{Nothing, AbstractLLMStream} = nothing,
+                     kwargs...)
+    
+    # Get schema (prefer explicit, otherwise provider default)
+    protocolSchema = schema === nothing ? get_provider_schema(provider_info) : schema
+    
+    # Get API key (prefer explicit, otherwise env var)
+    api_key = api_key === nothing ? get(ENV, provider_info.api_key_env_var, "") : api_key
+    isempty(api_key) && throw(ArgumentError("API key not found in environment variable $(provider_info.api_key_env_var)"))
+    
+    # Build request payload using schema (pass stream as positional argument)
+    stream_flag = stream_callback !== nothing
+    payload = build_payload(protocolSchema, prompt, model_id, sys_msg, stream_flag; kwargs...)
+    
+    # Build headers
+    headers = build_headers(provider_info, api_key)
+    
+    # Build URL using schema
+    url = build_url(protocolSchema, provider_info.base_url, model_id, stream_flag)
+    
+    # Branch based on streaming
+    if stream_callback === nothing
+        # Non-streaming request
+        @show payload
+        @show headers
+        @show url
+        response = HTTP.post(url, headers, JSON3.write(payload))
+        
+        response.status != 200 && error("API request failed with status $(response.status): $(String(response.body))")
+        
+        return JSON3.read(response.body, Dict)
+    else
+        # Configure stream callback schema if not set
+        stream_callback.schema === nothing && (stream_callback.schema = protocolSchema)
+        
+        # Streaming request
+        response = streamed_request!(stream_callback, url, headers, JSON3.write(payload))
+        
+        response.status != 200 && error("API request failed with status $(response.status): $(String(response.body))")
+        
+        return JSON3.read(response.body, Dict)
+    end
+end
+
+# Parse "Provider:model/slug" into (ProviderInfo, "transformed_model_id")
+function parse_provider_model(provider_model::AbstractString)
+    parts = split(provider_model, ":", limit=2)
+    length(parts) == 2 || throw(ArgumentError("provider_model must be in format \"Provider:model/slug\", got \"$provider_model\""))
+    
+    provider_name = parts[1]
+    model_id = parts[2]
     
     # Get provider info
     provider_info = get_provider_info(lowercase(provider_name))
-    provider_info === nothing && throw(ArgumentError("Unknown provider: $provider_name"))
+    provider_info === nothing && throw(ArgumentError("Unknown provider: $provider_name. Available: $(join(sort(list_known_providers()), ", "))"))
     
-    # Get API key
-    if api_key === nothing
-        if provider_info.api_key_env_var !== nothing
-            api_key = get(ENV, provider_info.api_key_env_var, "")
-            isempty(api_key) && throw(ArgumentError("API key not found in environment variable $(provider_info.api_key_env_var)"))
-        else
-            throw(ArgumentError("No API key provided and no standard env var for provider $provider_name"))
-        end
+    # Strip redundant provider prefix from model_id if present
+    provider_lower = lowercase(provider_name)
+    if startswith(model_id, provider_lower * "/")
+        model_id = model_id[(length(provider_lower) + 2):end]  # +2 for the "/"
     end
     
-    # Build request payload
-    payload = Dict{String, Any}(
-        "model" => model_id,
-        "messages" => [Dict("role" => "user", "content" => prompt)]
-    )
+    # Transform model name according to provider rules
+    transformed_model_id = transform_model_name(provider_info, model_id)
     
-    # Add any additional kwargs
-    for (k, v) in kwargs
-        payload[string(k)] = v
-    end
-    
-    # Build headers
-    auth_header = get_provider_auth_header(lowercase(provider_name), api_key)
-    auth_header === nothing && throw(ArgumentError("Failed to build auth header for provider $provider_name"))
-    
-    headers = [
-        auth_header,
-        "Content-Type" => "application/json"
-    ]
-    
-    # Add default headers for this provider
-    for (k, v) in provider_info.default_headers
-        push!(headers, k => v)
-    end
-    
-    # Build URL
-    url = "$(provider_info.base_url)/chat/completions"
-    
-    try
-        response = HTTP.post(url, headers, JSON3.write(payload))
-        
-        if response.status != 200
-            error("API request failed with status $(response.status): $(String(response.body))")
-        end
-        
-        return JSON3.read(response.body)
-        
-    catch e
-        if e isa HTTP.ExceptionRequest.StatusError
-            error("API request failed: $(e.response.status) - $(String(e.response.body))")
-        else
-            rethrow(e)
-        end
-    end
+    return provider_info, transformed_model_id
 end

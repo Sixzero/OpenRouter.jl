@@ -24,13 +24,26 @@ struct ChatCompletionSchema <: AbstractRequestSchema
 end
 
 """
+Build messages array for ChatCompletionSchema.
+"""
+function build_messages(::ChatCompletionSchema, prompt, sys_msg)
+    msgs = normalize_messages(prompt, sys_msg)
+    return to_openai_messages(msgs)
+end
+
+"""
 Build the request payload for ChatCompletionSchema.
 """
-function build_payload(::ChatCompletionSchema, prompt::String, model_id::String; kwargs...)
+function build_payload(::ChatCompletionSchema, prompt, model_id::AbstractString, sys_msg, stream::Bool = false; kwargs...)
+    messages = build_messages(ChatCompletionSchema(), prompt, sys_msg)
+    
     payload = Dict{String, Any}(
         "model" => model_id,
-        "messages" => [Dict("role" => "user", "content" => prompt)]
+        "messages" => messages
     )
+    
+    # Add stream parameter only if true
+    stream && (payload["stream"] = true)
     
     # Add any additional kwargs
     for (k, v) in kwargs
@@ -38,6 +51,13 @@ function build_payload(::ChatCompletionSchema, prompt::String, model_id::String;
     end
     
     return payload
+end
+
+"""
+Build the URL for ChatCompletionSchema.
+"""
+function build_url(schema::ChatCompletionSchema, base_url::AbstractString, model_id::AbstractString, stream::Bool = false)
+    return "$(base_url)$(schema.endpoint)"
 end
 
 """
@@ -75,14 +95,27 @@ struct AnthropicSchema <: AbstractRequestSchema
 end
 
 """
+Build messages array for AnthropicSchema.
+"""
+function build_messages(::AnthropicSchema, prompt, sys_msg)
+    msgs = normalize_messages(prompt, sys_msg)
+    return to_anthropic_messages(msgs)
+end
+
+"""
 Build the request payload for AnthropicSchema.
 """
-function build_payload(::AnthropicSchema, prompt::String, model_id::String; max_tokens::Int=1000, kwargs...)
+function build_payload(::AnthropicSchema, prompt, model_id::AbstractString, sys_msg, stream::Bool = false; max_tokens::Int=1000, kwargs...)
+    messages = build_messages(AnthropicSchema(), prompt, sys_msg)
+    
     payload = Dict{String, Any}(
         "model" => model_id,
         "max_tokens" => max_tokens,
-        "messages" => [Dict("role" => "user", "content" => prompt)]
+        "messages" => messages
     )
+    
+    # Add stream parameter only if true
+    stream && (payload["stream"] = true)
     
     # Add any additional kwargs
     for (k, v) in kwargs
@@ -90,6 +123,13 @@ function build_payload(::AnthropicSchema, prompt::String, model_id::String; max_
     end
     
     return payload
+end
+
+"""
+Build the URL for AnthropicSchema.
+"""
+function build_url(schema::AnthropicSchema, base_url::AbstractString, model_id::AbstractString, stream::Bool = false)
+    return "$(base_url)$(schema.endpoint)"
 end
 
 """
@@ -111,18 +151,35 @@ Google Gemini-style request schema.
 struct GeminiSchema <: AbstractRequestSchema
     endpoint::String
     
-    GeminiSchema() = new("/v1/models/{model}:generateContent")
+    GeminiSchema() = new("/models/{model}:generateContent")
+end
+
+"""
+Build contents array for GeminiSchema.
+"""
+function build_messages(::GeminiSchema, prompt, sys_msg)
+    # We treat sys_msg as separate system_instruction; here we only convert prompt/messages.
+    msgs = normalize_messages(prompt, nothing)
+    return to_gemini_contents(msgs)
 end
 
 """
 Build the request payload for GeminiSchema.
 """
-function build_payload(::GeminiSchema, prompt::String, model_id::String; kwargs...)
+function build_payload(::GeminiSchema, prompt, model_id::AbstractString, sys_msg, stream::Bool = false; kwargs...)
+    contents = build_messages(GeminiSchema(), prompt, sys_msg)
+    
     payload = Dict{String, Any}(
-        "contents" => [Dict(
-            "parts" => [Dict("text" => prompt)]
-        )]
+        "contents" => contents
     )
+
+    if sys_msg !== nothing
+        payload["system_instruction"] = isa(sys_msg, AbstractString) ?
+            Dict("parts" => Any[Dict("text" => sys_msg)]) :
+            sys_msg
+    end
+    
+    # Note: Google doesn't use stream=true in payload, it uses different endpoint
     
     # Add generation config if provided
     generation_config = Dict{String, Any}()
@@ -142,6 +199,17 @@ function build_payload(::GeminiSchema, prompt::String, model_id::String; kwargs.
 end
 
 """
+Build the URL for GeminiSchema (handles model parameter substitution and streaming).
+"""
+function build_url(schema::GeminiSchema, base_url::AbstractString, model_id::AbstractString, stream::Bool = false)
+    endpoint = replace(schema.endpoint, "{model}" => model_id)
+    if stream
+        endpoint = replace(endpoint, "generateContent" => "streamGenerateContent") * "?alt=sse"
+    end
+    return "$(base_url)$(endpoint)"
+end
+
+"""
 Extract response content for GeminiSchema.
 """
 function extract_content(::GeminiSchema, result::Dict)
@@ -155,20 +223,4 @@ function extract_content(::GeminiSchema, result::Dict)
         end
     end
     error("Unexpected response format from Gemini API")
-end
-
-"""
-Get the appropriate schema for a provider.
-"""
-function get_provider_schema(provider_name::String)::AbstractRequestSchema
-    provider_lower = lowercase(provider_name)
-    
-    if provider_lower in ["anthropic", "claude"]
-        return AnthropicSchema()
-    elseif provider_lower in ["google", "gemini"]
-        return GeminiSchema()
-    else
-        # Default to ChatCompletion for most providers
-        return ChatCompletionSchema()
-    end
 end
