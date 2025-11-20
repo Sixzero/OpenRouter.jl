@@ -28,7 +28,46 @@ using Aqua
         @test provider == "Together"
         @test model == "moonshotai/kimi-k2-thinking"
     end
-    
+
+    @testset "cost calculation with cache" begin
+        pricing = Pricing(prompt = 0.000002, completion = 0.000004,
+                          input_cache_read = 0.000001, input_cache_write = 0.0000015,
+                          internal_reasoning = nothing, input_audio_cache = nothing,
+                          discount = nothing)
+        tokens = Dict(
+            :prompt_tokens => 1000,
+            :completion_tokens => 500,
+            :input_cache_read => 200,
+            :input_cache_write => 100,
+        )
+        cost = calculate_cost(pricing, tokens)
+        @test isapprox(cost, 1000*0.000002 + 500*0.000004 + 200*0.000001 + 100*0.0000015; atol=1e-10)
+    end
+
+    @testset "calculate_cost with ProviderEndpoint" begin
+        pricing = Pricing(
+            prompt = 0.000002,
+            completion = 0.000004,
+            input_cache_read = 0.000001,
+            input_cache_write = 0.0000015,
+            internal_reasoning = nothing,
+            input_audio_cache = nothing,
+            discount = nothing,
+        )
+        endpoint = ProviderEndpoint(
+            # ... existing required fields ...,
+            pricing = pricing,
+        )
+        tokens = Dict(
+            :prompt_tokens => 1000,
+            :completion_tokens => 500,
+            :input_cache_read => 200,
+            :input_cache_write => 100,
+        )
+        cost = calculate_cost(endpoint, tokens)
+        @test isapprox(cost, 1000*0.000002 + 500*0.000004 + 200*0.000001 + 100*0.0000015; atol=1e-10)
+    end
+
     # Include custom provider tests
     include("test_custom_providers.jl")
 end

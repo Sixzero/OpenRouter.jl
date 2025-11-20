@@ -14,17 +14,6 @@ struct ProviderInfo
     notes::String
 end
 
-# Model name transformation functions
-function anthropic_model_transform(model_id::AbstractString)
-    # Replace dots with dashes in version numbers (e.g., "4.5" -> "4-5")
-    return replace(model_id, r"(\d+)\.(\d+)" => s"\1-\2")
-end
-
-function google_model_transform(model_id::AbstractString)
-    # Remove "google/" prefix if present
-    return startswith(model_id, "google/") ? model_id[8:end] : model_id
-end
-
 const PROVIDER_INFO = Dict{String,ProviderInfo}(
     # OpenAI-compatible / OpenAI-style providers
     "openai" => ProviderInfo(
@@ -32,7 +21,7 @@ const PROVIDER_INFO = Dict{String,ProviderInfo}(
         "Bearer",
         "OPENAI_API_KEY",
         Dict{String,String}(),
-        nothing,
+        openai_model_transform,
         ChatCompletionSchema(),
         "Standard OpenAI API"),
     "mistral" => ProviderInfo(
@@ -40,7 +29,7 @@ const PROVIDER_INFO = Dict{String,ProviderInfo}(
         "Bearer",
         "MISTRAL_API_KEY",
         Dict{String,String}(),
-        nothing,
+        mistral_model_transform,
         ChatCompletionSchema(),
         "Standard OpenAI-compatible API"),
     "fireworks" => ProviderInfo(
@@ -48,7 +37,7 @@ const PROVIDER_INFO = Dict{String,ProviderInfo}(
         "Bearer",
         "FIREWORKS_API_KEY",
         Dict{String,String}(),
-        nothing,
+        fireworks_model_transform,
         ChatCompletionSchema(),
         "Standard OpenAI-compatible API"),
     "together" => ProviderInfo(
@@ -56,7 +45,7 @@ const PROVIDER_INFO = Dict{String,ProviderInfo}(
         "Bearer",
         "TOGETHER_API_KEY",
         Dict{String,String}(),
-        nothing,
+        together_model_transform,
         ChatCompletionSchema(),
         "Standard OpenAI-compatible API"),
     "groq" => ProviderInfo(
@@ -64,7 +53,7 @@ const PROVIDER_INFO = Dict{String,ProviderInfo}(
         "Bearer",
         "GROQ_API_KEY",
         Dict{String,String}(),
-        nothing,
+        groq_model_transform,
         ChatCompletionSchema(),
         "Standard OpenAI-compatible API"),
     "deepseek" => ProviderInfo(
@@ -72,7 +61,7 @@ const PROVIDER_INFO = Dict{String,ProviderInfo}(
         "Bearer",
         "DEEPSEEK_API_KEY",
         Dict{String,String}(),
-        nothing,
+        deepseek_model_transform,
         ChatCompletionSchema(),
         "Standard OpenAI-compatible API"),
     "cerebras" => ProviderInfo(
@@ -80,7 +69,7 @@ const PROVIDER_INFO = Dict{String,ProviderInfo}(
         "Bearer",
         "CEREBRAS_API_KEY",
         Dict{String,String}(),
-        nothing,
+        cerebras_model_transform,
         ChatCompletionSchema(),
         "Standard OpenAI-compatible API"),
     "sambanova" => ProviderInfo(
@@ -88,7 +77,7 @@ const PROVIDER_INFO = Dict{String,ProviderInfo}(
         "Bearer",
         "SAMBANOVA_API_KEY",
         Dict{String,String}(),
-        nothing,
+        sambanova_model_transform,
         ChatCompletionSchema(),
         "Standard OpenAI-compatible API"),
     "xai" => ProviderInfo(
@@ -96,7 +85,7 @@ const PROVIDER_INFO = Dict{String,ProviderInfo}(
         "Bearer",
         "XAI_API_KEY",
         Dict{String,String}(),
-        nothing,
+        xai_model_transform,
         ChatCompletionSchema(),
         "Standard OpenAI-compatible API"),
     "moonshotai" => ProviderInfo(
@@ -104,7 +93,7 @@ const PROVIDER_INFO = Dict{String,ProviderInfo}(
         "Bearer",
         "MOONSHOT_API_KEY",
         Dict{String,String}(),
-        nothing,
+        moonshotai_model_transform,
         ChatCompletionSchema(),
         "Standard OpenAI-compatible API"),
     "minimax" => ProviderInfo(
@@ -112,7 +101,7 @@ const PROVIDER_INFO = Dict{String,ProviderInfo}(
         "Bearer",
         "MINIMAX_API_KEY",
         Dict{String,String}(),
-        nothing,
+        minimax_model_transform,
         ChatCompletionSchema(),
         "Uses custom endpoint paths for different model types"),
 
@@ -130,7 +119,7 @@ const PROVIDER_INFO = Dict{String,ProviderInfo}(
         "Bearer",
         "COHERE_API_KEY",
         Dict{String,String}(),
-        nothing,
+        cohere_model_transform,
         ChatCompletionSchema(),  # Assuming Cohere uses OpenAI-compatible format
         "Uses Cohere's native API format"),
     "google-ai-studio" => ProviderInfo(
@@ -330,3 +319,23 @@ end
 Get the appropriate schema for a provider info.
 """
 get_provider_schema(provider_info::ProviderInfo)::AbstractRequestSchema = provider_info.schema
+
+"""
+Calculate cost for a given endpoint and token usage.
+Unwraps `.pricing`. Warns if cost cannot be determined (e.g. missing pricing).
+"""
+function calculate_cost(endpoint::ProviderEndpoint, tokens::Union{Nothing,Dict})
+    if endpoint.pricing === nothing
+        @warn "No pricing available on endpoint; cannot calculate cost." endpoint=endpoint tokens=tokens
+        return nothing
+    end
+
+    cost = calculate_cost(endpoint.pricing, tokens)
+
+    if cost === nothing
+        @warn "Pricing present but resulted in zero/undefined cost; check pricing fields and tokens." endpoint=endpoint tokens=tokens
+    end
+
+    return cost
+end
+

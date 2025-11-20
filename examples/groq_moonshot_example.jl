@@ -6,25 +6,32 @@ using OpenRouter
 # Basic usage
 @time response = aigen(
     "Write a haiku about Julia programming", 
-    # "groq:moonshotai/kimi-k2-instruct-0905"
+    "groq:moonshotai/kimi-k2-0905"
     # "anthropic:anthropic/claude-haiku-4.5"
-    "openai:openai/gpt-5.1"
+    # "openai:openai/gpt-5.1"
 )
 println(response)
 #%%
 using OpenRouter
 
 # list_models("openai")
-mm = list_models("groq")
 mm = list_models("openai")
 mm = list_models("google")
 mm = list_models("anthropic")
-@show mm[1:2]
+mm = list_models("groq")
+mm = list_models("cerebras")
 display([m.id for m in mm])
 
 #%%
+get_model("moonshotai/kimi-k2-0905:exacto").endpoints.endpoints .|> println
+#%%
+using OpenRouter: get_global_cache
+models = list_models()
+[m.id for m in models if contains(m.id, "kimi-k2")] .|> println
+#%%
 # Show endpoints for groq
-groq_eps = list_provider_endpoints("anthropic")
+# groq_eps = list_provider_endpoints("anthropic")
+groq_eps = list_provider_endpoints("groq")
 
 for m in groq_eps
     println(m)

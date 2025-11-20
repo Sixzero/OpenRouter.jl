@@ -2,6 +2,67 @@ using HTTP
 using JSON3
 
 """
+    aigen_raw(prompt, provider_model::String; 
+              schema::Union{AbstractRequestSchema, Nothing} = nothing,
+              api_key::Union{String, Nothing} = nothing,
+              sys_msg = nothing,
+              stream_callback::Union{Nothing, AbstractLLMStream} = nothing,
+              kwargs...)
+
+Generate text using a specific provider and model, returning raw API response and parsing components.
+
+This function is useful for:
+- Testing equivalence between streaming and non-streaming responses
+- Debugging API response formats
+- Custom response processing
+
+# Returns
+- `NamedTuple`: Contains `(result, schema, provider_info, model_id, provider_endpoint, elapsed)`
+
+# Example
+```julia
+# Compare streaming vs non-streaming raw responses
+raw_stream = aigen_raw("Hello", "anthropic:claude-3-sonnet"; stream_callback=HttpStreamCallback())
+raw_normal = aigen_raw("Hello", "anthropic:claude-3-sonnet")
+
+# Access components
+@show raw_stream.result
+@show raw_stream.schema
+@show raw_stream.elapsed
+```
+"""
+function aigen_raw(prompt, provider_model::String; 
+                   schema::Union{AbstractRequestSchema, Nothing} = nothing,
+                   api_key::Union{String, Nothing} = nothing,
+                   sys_msg = nothing,
+                   stream_callback::Union{Nothing, AbstractLLMStream} = nothing,
+                   kwargs...)
+    
+    provider_info, model_id, provider_endpoint = parse_provider_model(provider_model)
+    
+    # Record start time for elapsed calculation
+    start_time = time()
+    
+    result = _aigen_core(prompt, provider_info, model_id, provider_endpoint; schema=schema, api_key=api_key, sys_msg=sys_msg, stream_callback=stream_callback, kwargs...)
+    
+    elapsed = time() - start_time
+    
+    # Get schema for extraction if not provided
+    if schema === nothing
+        schema = get_provider_schema(provider_info)
+    end
+    
+    return (
+        result = result,
+        schema = schema,
+        provider_info = provider_info,
+        model_id = model_id,
+        provider_endpoint = provider_endpoint,
+        elapsed = elapsed
+    )
+end
+
+"""
     aigen(prompt, provider_model::String; 
           schema::Union{AbstractRequestSchema, Nothing} = nothing,
           api_key::Union{String, Nothing} = nothing,
@@ -23,12 +84,13 @@ Generate text using a specific provider and model.
 - `kwargs...`: Additional API parameters
 
 # Returns
-- `String`: Generated text response
+- `AIMessage`: Generated response with metadata (cost, tokens, etc.)
 
 # Example
 ```julia
 response = aigen("Write a haiku about Julia programming", "Together:moonshotai/kimi-k2-thinking")
-println(response)
+println(response.content)
+println("Cost: \$(response.cost)")
 
 # Using system message
 response = aigen("Hello", "Anthropic:claude-3-sonnet"; sys_msg="You are a helpful assistant")
@@ -46,43 +108,28 @@ function aigen(prompt, provider_model::String;
                stream_callback::Union{Nothing, AbstractLLMStream} = nothing,
                kwargs...)
     
-    provider_info, model_id = parse_provider_model(provider_model)
-    result = _aigen_core(prompt, provider_info, model_id; schema=schema, api_key=api_key, sys_msg=sys_msg, stream_callback=stream_callback, kwargs...)
+    # Get raw response and all components
+    raw = aigen_raw(prompt, provider_model; schema=schema, api_key=api_key, sys_msg=sys_msg, stream_callback=stream_callback, kwargs...)
     
-    # Get schema for extraction if not provided
-    if schema === nothing
-        schema = get_provider_schema(provider_info)
-    end
+    # Extract content and build AIMessage
+    content = extract_content(raw.schema, raw.result)
+    finish_reason = extract_finish_reason(raw.schema, raw.result)
+    tokens = extract_tokens(raw.schema, raw.result)
+    cost = calculate_cost(raw.provider_endpoint, tokens)
     
-    # Extract content using schema
-    return extract_content(schema, result)
-end
-
-"""
-    aigen_raw(prompt, provider_model::String; 
-              schema::Union{AbstractRequestSchema, Nothing} = nothing,
-              sys_msg = nothing,
-              stream_callback::Union{Nothing, AbstractLLMStream} = nothing,
-              kwargs...)
-
-Generate text and return the raw API response as a dictionary.
-Useful for accessing usage statistics, multiple choices, etc.
-"""
-function aigen_raw(prompt, provider_model::String; 
-                   schema::Union{AbstractRequestSchema, Nothing} = nothing,
-                   api_key::Union{String, Nothing} = nothing,
-                   sys_msg = nothing,
-                   stream_callback::Union{Nothing, AbstractLLMStream} = nothing,
-                   kwargs...)
-    
-    provider_info, model_id = parse_provider_model(provider_model)
-    return _aigen_core(prompt, provider_info, model_id; schema=schema, api_key=api_key, sys_msg=sys_msg, stream_callback=stream_callback, kwargs...)
+    return AIMessage(
+        content=content,
+        finish_reason=finish_reason,
+        tokens=tokens,
+        elapsed=raw.elapsed,
+        cost=cost
+    )
 end
 
 """
 Core function that handles both streaming and non-streaming API calls.
 """
-function _aigen_core(prompt, provider_info::ProviderInfo, model_id::AbstractString; 
+function _aigen_core(prompt, provider_info::ProviderInfo, model_id::AbstractString, provider_endpoint::ProviderEndpoint; 
                      schema::Union{AbstractRequestSchema, Nothing} = nothing,
                      api_key::Union{AbstractString, Nothing} = nothing,
                      sys_msg = nothing,
@@ -109,17 +156,14 @@ function _aigen_core(prompt, provider_info::ProviderInfo, model_id::AbstractStri
     # Branch based on streaming
     if stream_callback === nothing
         # Non-streaming request
-        @show payload
-        @show headers
-        @show url
         response = HTTP.post(url, headers, JSON3.write(payload))
         
         response.status != 200 && error("API request failed with status $(response.status): $(String(response.body))")
         
         return JSON3.read(response.body, Dict)
     else
-        # Configure stream callback schema if not set
-        stream_callback.schema === nothing && (stream_callback.schema = protocolSchema)
+        # Configure stream callback with schema and provider info
+        configure_stream_callback!(stream_callback, protocolSchema, provider_info, provider_endpoint)
         
         # Streaming request
         response = streamed_request!(stream_callback, url, headers, JSON3.write(payload))
@@ -130,7 +174,7 @@ function _aigen_core(prompt, provider_info::ProviderInfo, model_id::AbstractStri
     end
 end
 
-# Parse "Provider:model/slug" into (ProviderInfo, "transformed_model_id")
+# Parse "Provider:model/slug" into (ProviderInfo, "transformed_model_id", ProviderEndpoint)
 function parse_provider_model(provider_model::AbstractString)
     parts = split(provider_model, ":", limit=2)
     length(parts) == 2 || throw(ArgumentError("provider_model must be in format \"Provider:model/slug\", got \"$provider_model\""))
@@ -142,14 +186,34 @@ function parse_provider_model(provider_model::AbstractString)
     provider_info = get_provider_info(lowercase(provider_name))
     provider_info === nothing && throw(ArgumentError("Unknown provider: $provider_name. Available: $(join(sort(list_known_providers()), ", "))"))
     
-    # Strip redundant provider prefix from model_id if present
-    provider_lower = lowercase(provider_name)
-    if startswith(model_id, provider_lower * "/")
-        model_id = model_id[(length(provider_lower) + 2):end]  # +2 for the "/"
+    # Get the cached model with endpoints
+    cached_model = get_model(model_id; fetch_endpoints=true)
+    if cached_model === nothing
+        # Get available models from this provider for helpful error message
+        available_models = list_models(lowercase(provider_name))
+        model_ids = [m.id for m in available_models]
+        hint = "\nHint: Available models for $provider_name: $(join(first(model_ids, 10), ", "))$(length(model_ids) > 10 ? " (and $(length(model_ids) - 10) more)" : "")"
+        throw(ArgumentError("Model not found: $model_id. Use update_db() to refresh the model database.$hint"))
     end
     
-    # Transform model name according to provider rules
+    provider_lower = lowercase(provider_name)
+    # Find the specific endpoint for this provider
+    provider_endpoint = nothing
+    if cached_model.endpoints !== nothing
+        for endpoint in cached_model.endpoints.endpoints
+            if lowercase(endpoint.provider_name) == provider_lower || endpoint.tag == provider_lower 
+                provider_endpoint = endpoint
+                break
+            end
+        end
+    end
+    
+    if provider_endpoint === nothing
+        throw(ArgumentError("Provider $provider_name does not host model $model_id. Available providers: $(join([ep.provider_name for ep in cached_model.endpoints.endpoints], ", "))"))
+    end
+    
+    # Transform model name according to provider rules (this now handles prefix removal internally)
     transformed_model_id = transform_model_name(provider_info, model_id)
     
-    return provider_info, transformed_model_id
+    return provider_info, transformed_model_id, provider_endpoint
 end

@@ -245,7 +245,7 @@ function update_db(;
 end
 
 function get_model(
-    model_id::String;
+    model_id::AbstractString;
     api_key::String = get(ENV, "OPENROUTER_API_KEY", ""),
     fetch_endpoints::Bool = false
 )::Union{CachedModel, Nothing}

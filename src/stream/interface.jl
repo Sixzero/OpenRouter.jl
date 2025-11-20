@@ -24,6 +24,18 @@ function print_content end
 # Build response body from chunks to mimic standard API response
 function build_response_body end
 
+"""
+    configure_stream_callback!(cb::AbstractLLMStream, schema::AbstractRequestSchema, provider_info::ProviderInfo, provider_endpoint::ProviderEndpoint)
+
+Configure stream callback with schema and provider information.
+For HttpStreamHooks, also sets up pricing for accurate cost calculation.
+"""
+function configure_stream_callback!(cb::AbstractLLMStream, schema::AbstractRequestSchema, provider_info::ProviderInfo, provider_endpoint::ProviderEndpoint)
+    cb.schema = schema
+    return cb
+end
+
+
 ## Default implementations
 """
     StreamChunk
@@ -45,43 +57,6 @@ function Base.show(io::IO, chunk::StreamChunk)
     data_preview = length(chunk.data) > 10 ? "$(first(chunk.data, 10))..." : chunk.data
     json_keys = !isnothing(chunk.json) ? join(keys(chunk.json), ", ", " and ") : "-"
     print(io, "StreamChunk(event=$(chunk.event), data=$(data_preview), json keys=$(json_keys))")
-end
-
-"""
-    HttpStreamCallback
-
-HTTP-based streaming callback that prints content to output stream.
-When streaming completes, builds response body from chunks as if it was a normal API response.
-
-# Fields
-- `out`: Output stream (e.g., `stdout` or pipe)
-- `schema`: Request schema determining API format
-- `chunks`: List of received `StreamChunk` chunks  
-- `verbose`: Whether to print verbose information
-- `kwargs`: Custom keyword arguments
-
-# Example
-```julia
-# Simple usage - stream to stdout
-callback = HttpStreamCallback(; out=stdout, schema=ChatCompletionSchema())
-response = aigen("Count to 10", "OpenAI:gpt-4o-mini"; stream_callback=callback)
-
-# Record all chunks for inspection
-callback = HttpStreamCallback(; schema=ChatCompletionSchema())
-response = aigen("Count to 10", "OpenAI:gpt-4o-mini"; stream_callback=callback)
-# Inspect with callback.chunks
-```
-"""
-@kwdef mutable struct HttpStreamCallback{T1 <: Any} <: AbstractLLMStream
-    out::T1 = stdout
-    schema::Union{AbstractRequestSchema, Nothing} = nothing
-    chunks::Vector{<:StreamChunk} = StreamChunk[]
-    verbose::Bool = false
-    kwargs::NamedTuple = NamedTuple()
-end
-
-function Base.show(io::IO, cb::HttpStreamCallback)
-    print(io, "HttpStreamCallback(out=$(cb.out), schema=$(cb.schema), chunks=$(length(cb.chunks)) items, $(cb.verbose ? "verbose" : "silent"))")
 end
 
 Base.empty!(cb::AbstractLLMStream) = empty!(cb.chunks)

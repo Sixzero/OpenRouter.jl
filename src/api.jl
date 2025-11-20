@@ -151,3 +151,24 @@ function list_endpoints(model_id::String, api_key::String = get(ENV, "OPENROUTER
     json_str = list_endpoints_raw(model_id, api_key)
     return parse_endpoints(json_str)
 end
+
+"""
+    list_embeddings_models_raw(api_key::String = get(ENV, "OPENROUTER_API_KEY", ""))::String
+
+Return raw JSON string of embedding models list.
+Uses OPENROUTER_API_KEY environment variable by default.
+"""
+function list_embeddings_models_raw(api_key::String = get(ENV, "OPENROUTER_API_KEY", ""))::String
+    return read(`curl -s -H "Authorization: Bearer $api_key" https://openrouter.ai/api/v1/embeddings/models`, String)
+end
+
+"""
+    list_embeddings_models(api_key::String = get(ENV, "OPENROUTER_API_KEY", ""))::Vector{OpenRouterEmbeddingModel}
+
+Return parsed embedding models list as Julia structs.
+Uses OPENROUTER_API_KEY environment variable by default.
+"""
+function list_embeddings_models(api_key::String = get(ENV, "OPENROUTER_API_KEY", ""))::Vector{OpenRouterEmbeddingModel}
+    json_str = list_embeddings_models_raw(api_key)
+    return parse_embedding_models(json_str)
+end

@@ -58,6 +58,75 @@ struct ModelProviders
     endpoints::Vector{ProviderEndpoint}
 end
 
+# New structs from patch
+struct TopProvider
+    is_moderated::Union{Bool, Nothing}
+    context_length::Union{Int, Nothing}
+    max_completion_tokens::Union{Int, Nothing}
+end
+
+struct OpenRouterEmbeddingModel
+    id::String
+    canonical_slug::Union{String, Nothing}
+    name::String
+    created::Union{Int, Nothing}
+    pricing::Union{Pricing, Nothing}
+    context_length::Union{Int, Nothing}
+    architecture::Union{Architecture, Nothing}
+    top_provider::Union{TopProvider, Nothing}
+    per_request_limits::Union{Nothing, Nothing}  # Always null in API
+    supported_parameters::Union{Vector{String}, Nothing}
+    default_parameters::Union{Nothing, Nothing}  # Always null in API
+    description::Union{String, Nothing}
+end
+
+
+"""
+Universal token counting and cost calculation utilities for OpenRouter.jl
+
+This module provides standardized token counting and cost calculation across all schemas and providers.
+"""
+
+"""
+    TokenCounts
+
+Universal token counting struct that standardizes token usage across all providers and schemas.
+
+# Fields
+- `prompt_tokens::Int`: Number of input/prompt tokens (excluding cached)
+- `completion_tokens::Int`: Number of output/completion tokens  
+- `total_tokens::Int`: Total tokens used (should equal sum of all token types)
+- `input_cache_read::Int`: Number of tokens read from cache
+- `input_cache_write::Int`: Number of tokens written to cache  
+- `internal_reasoning::Int`: Number of reasoning/thinking tokens (e.g., Gemini thoughts, Anthropic thinking)
+- `input_audio_cache::Int`: Number of audio tokens cached
+
+Note: Different providers use different naming conventions:
+- OpenAI: prompt_tokens, completion_tokens, cached_tokens (in prompt_tokens_details)
+- Anthropic: input_tokens, output_tokens, cache_creation_input_tokens, cache_read_input_tokens
+- Gemini: promptTokenCount, candidatesTokenCount, thoughtsTokenCount
+"""
+Base.@kwdef struct TokenCounts
+    prompt_tokens::Int = 0
+    completion_tokens::Int = 0
+    total_tokens::Int = 0
+    input_cache_read::Int = 0
+    input_cache_write::Int = 0
+    internal_reasoning::Int = 0
+    input_audio_cache::Int = 0
+end
+
+# Arithmetic operations for TokenCounts
+Base.:+(a::TokenCounts, b::TokenCounts) = TokenCounts(
+    prompt_tokens = a.prompt_tokens + b.prompt_tokens,
+    completion_tokens = a.completion_tokens + b.completion_tokens,
+    total_tokens = a.total_tokens + b.total_tokens,
+    input_cache_read = a.input_cache_read + b.input_cache_read,
+    input_cache_write = a.input_cache_write + b.input_cache_write,
+    internal_reasoning = a.internal_reasoning + b.internal_reasoning,
+    input_audio_cache = a.input_audio_cache + b.input_audio_cache
+)
+
 """
     parse_models(json_str::String)::Vector{OpenRouterModel}
 
@@ -167,4 +236,65 @@ function parse_endpoints(json_str::String)::ModelProviders
         architecture,
         endpoints
     )
+end
+
+"""
+    parse_embedding_models(json_str::String)::Vector{OpenRouterEmbeddingModel}
+
+Parse OpenRouter embedding models JSON response into Julia structs.
+"""
+function parse_embedding_models(json_str::String)::Vector{OpenRouterEmbeddingModel}
+    data = JSON3.read(json_str)
+    
+    models = OpenRouterEmbeddingModel[]
+    for model_data in data.data
+        pricing = haskey(model_data, :pricing) ? 
+            Pricing(
+                get(model_data.pricing, :prompt, nothing),
+                get(model_data.pricing, :completion, nothing),
+                get(model_data.pricing, :request, nothing),
+                get(model_data.pricing, :image, nothing),
+                get(model_data.pricing, :web_search, nothing),
+                get(model_data.pricing, :internal_reasoning, nothing),
+                get(model_data.pricing, :image_output, nothing),
+                get(model_data.pricing, :audio, nothing),
+                get(model_data.pricing, :input_audio_cache, nothing),
+                get(model_data.pricing, :input_cache_read, nothing),
+                get(model_data.pricing, :input_cache_write, nothing),
+                get(model_data.pricing, :discount, nothing)
+            ) : nothing
+            
+        architecture = haskey(model_data, :architecture) ?
+            Architecture(
+                get(model_data.architecture, :modality, nothing),
+                get(model_data.architecture, :input_modalities, nothing),
+                get(model_data.architecture, :output_modalities, nothing),
+                get(model_data.architecture, :tokenizer, nothing),
+                get(model_data.architecture, :instruct_type, nothing)
+            ) : nothing
+
+        top_provider = haskey(model_data, :top_provider) ?
+            TopProvider(
+                get(model_data.top_provider, :is_moderated, nothing),
+                get(model_data.top_provider, :context_length, nothing),
+                get(model_data.top_provider, :max_completion_tokens, nothing)
+            ) : nothing
+            
+        push!(models, OpenRouterEmbeddingModel(
+            model_data.id,
+            get(model_data, :canonical_slug, nothing),
+            model_data.name,
+            get(model_data, :created, nothing),
+            pricing,
+            get(model_data, :context_length, nothing),
+            architecture,
+            top_provider,
+            nothing,  # per_request_limits always null
+            get(model_data, :supported_parameters, nothing),
+            nothing,  # default_parameters always null
+            get(model_data, :description, nothing)
+        ))
+    end
+    
+    return models
 end

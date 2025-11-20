@@ -1,6 +1,6 @@
 name = "OpenRouter"
 uuid = "b1229eab-bc7b-489c-92b5-04baf87d8d0b"
-version = "1.0.0-DEV"
+version = "1.0.0"
 authors = ["SixZero <havliktomi@hotmail.com> and contributors"]
 
 [deps]

@@ -224,3 +224,26 @@ function extract_content(::GeminiSchema, result::Dict)
     end
     error("Unexpected response format from Gemini API")
 end
+
+"""
+Extract finish reason from API response based on schema.
+"""
+function extract_finish_reason(::ChatCompletionSchema, result::Dict)
+    if haskey(result, "choices") && length(result["choices"]) > 0
+        choice = result["choices"][1]
+        return get(choice, "finish_reason", nothing)
+    end
+    return nothing
+end
+
+function extract_finish_reason(::AnthropicSchema, result::Dict)
+    return get(result, "stop_reason", nothing)
+end
+
+function extract_finish_reason(::GeminiSchema, result::Dict)
+    if haskey(result, "candidates") && length(result["candidates"]) > 0
+        candidate = result["candidates"][1]
+        return get(candidate, "finishReason", nothing)
+    end
+    return nothing
+end

@@ -191,9 +191,7 @@ Process chunk and print it. Wrapper for:
 - print content to output stream using `print_content`
 """
 @inline function callback(cb::AbstractLLMStream, chunk::AbstractStreamChunk; kwargs...)
-    processed_text = extract_content(cb.schema, chunk; kwargs...)
-    isnothing(processed_text) && return nothing
-    print_content(cb.out, processed_text; kwargs...)
+    @warn "Unimplemented callback function: $(typeof(cb))"
     return nothing
 end
 
@@ -214,7 +212,7 @@ Handle error messages from streaming response. Always throws on error.
             string(chunk.data)
         end
         
-        throw(Exception("Error detected in streaming response: $(error_str)"))
+        throw("Error detected in streaming response: $(error_str)")
     end
     return nothing
 end
@@ -233,59 +231,4 @@ function streamed_request!(cb::AbstractLLMStream, url, headers, input::IO; kwarg
 end
 function streamed_request!(cb::AbstractLLMStream, url, headers, input::Dict; kwargs...)
     streamed_request!(cb, url, headers, String(JSON3.write(input)); kwargs...)
-end
-function streamed_request!(cb::HttpStreamCallback, url, headers, input::String; kwargs...)
-    @show input
-    verbose = get(kwargs, :verbose, false) || cb.verbose
-    resp = HTTP.open("POST", url, headers; kwargs...) do stream
-        write(stream, input)
-        HTTP.closewrite(stream)
-        response = HTTP.startread(stream)
-
-        # Validate content type
-        content_type = [header[2] for header in response.headers if lowercase(header[1]) == "content-type"]
-        @assert length(content_type) == 1 "Content-Type header must be present and unique"
-        @assert occursin("text/event-stream", lowercase(content_type[1])) """
-            Content-Type header should include text/event-stream.
-            Received: $(content_type[1])
-            Status: $(response.status)
-            Headers: $(response.headers)
-            Body: $(String(response.body))
-            Please check model and that stream=true is set.
-            """
-
-        isdone = false
-        spillover = ""
-        
-        while !eof(stream) || !isdone
-            masterchunk = String(readavailable(stream))
-            chunks, spillover = extract_chunks(cb.schema, masterchunk; verbose, spillover, cb.kwargs...)
-
-            for chunk in chunks
-                verbose && @debug "Chunk Data: $(chunk.data)"
-                
-                # Handle errors (always throw)
-                handle_error_message(chunk; verbose, cb.kwargs...)
-                
-                # Check for termination
-                is_done(cb.schema, chunk; verbose, cb.kwargs...) && (isdone = true)
-                
-                # Trigger callback
-                callback(cb, chunk; verbose, cb.kwargs...)
-                
-                # Store chunk
-                push!(cb, chunk)
-            end
-        end
-        HTTP.closeread(stream)
-    end
-    
-    # Aesthetic newline for stdout
-    cb.out == stdout && (println(); flush(stdout))
-
-    # Build response body
-    body = build_response_body(cb.schema, cb; verbose, cb.kwargs...)
-    resp.body = JSON3.write(body)
-
-    return resp
 end

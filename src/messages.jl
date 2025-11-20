@@ -10,7 +10,11 @@ end
 Base.@kwdef struct AIMessage <: AbstractMessage
     content::Any
     name::Union{Nothing, String} = nothing
+    image_data::Union{Nothing, Vector{String}} = nothing
     finish_reason::Union{Nothing, String} = nothing
+    tokens::Union{Nothing, TokenCounts} = nothing
+    elapsed::Float64 = -1.0
+    cost::Union{Nothing, Float64} = nothing
     extras::Union{Nothing, Dict{Symbol, Any}} = nothing
 end
 
