@@ -31,7 +31,7 @@ To use the package you need OpenRouter API key:
    export OPENROUTER_API_KEY="sk-or-..."
    ```
 
-This is required to download the list of models and providers available. These APIs are free. The models you want to use might require other API_KEYs to access provider endpoints.
+This is required to download the list of models and providers available. These APIs are free. The models you want to use might require other API_KEYs to access provider endpoints, ex: openai models will require OPENAI_API_KEY.
 
 ---
 
