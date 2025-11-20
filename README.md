@@ -14,6 +14,27 @@ The library is in active use at **TodoFor.ai**, so it will be maintained and ext
 
 ---
 
+## Installation and setup
+
+Add the package from the Julia REPL:
+
+```julia
+] add OpenRouter
+```
+
+To use the package you need OpenRouter API key:
+
+1. Create an API key at https://openrouter.ai/settings/keys
+2. Set the `OPENROUTER_API_KEY` environment variable, e.g.:
+
+   ```sh
+   export OPENROUTER_API_KEY="sk-or-..."
+   ```
+
+This is required to download the list of models and providers available. These APIs are free. The models you want to use might require other API_KEYs to access provider endpoints.
+
+---
+
 ## Quick data peek: raw `curl` vs Julia helpers
 
 You can always inspect the raw OpenRouter API with `curl`:
@@ -102,6 +123,7 @@ OpenRouter.jl has a narrower, complementary goal:
 - It aims for **full modularity**:
   - You can layer your own prompting, RAG, orchestration, or logging on top
   - Third-party packages can extend it (e.g. alternative streaming backends, custom providers, extra metrics) without fighting the core design
+  - There is **no default system message** – you are always in full control of `sys_msg`
 - It focuses on **OpenRouter’s model catalog**, pricing, and provider quirks:
   - Automatic model metadata and endpoint discovery
   - Provider-specific model ID mapping
@@ -135,7 +157,7 @@ using OpenRouter
 msg = aigen(
     "Write a short introduction to Julia for Python users.",
     "openai:openai/gpt-5.1";
-    sys_msg = "You are a concise technical writer."
+    sys_msg = "You are a concise technical writer.",  # no hidden default system prompt
 )
 
 println(msg.content)
@@ -144,9 +166,13 @@ println("Cost (USD): ", msg.cost)
 println("Elapsed (s): ", msg.elapsed)
 ```
 
-### Streaming
+---
 
-Streaming swaps a single HTTP request for a streaming HTTP request; the rest of the pipeline is shared:
+## Streaming
+
+Streaming swaps a single HTTP request for a streaming HTTP request; the rest of the pipeline is shared.
+
+The built-in streaming callback is `HttpStreamCallback`, which is the drop in replacement of a “StreamCallback” for HTTP-based streaming in this package.
 
 ```julia
 using OpenRouter
@@ -172,7 +198,7 @@ Under the hood:
   - **non-streaming** ⇒ `HTTP.post`
   - **streaming** ⇒ `streamed_request!` + SSE parsing, then reconstructs a **POST-like response** (same shape as a non-streaming call)
 
-This design keeps streaming and non-streaming behavior as similar as possible from the caller’s perspective.
+This design keeps streaming and non-streaming behavior as similar as possible from the caller’s perspective, while still allowing custom stream handlers via the `AbstractLLMStream` interface.
 
 ---
 
@@ -202,7 +228,7 @@ Extraction is schema-specific:
 
 Pricing is modeled via:
 
-- `Pricing` – per-token and per-request prices (often in USD / 1 tokens), including:
+- `Pricing` – per-token and per-request prices (often in USD / tokens), including:
   - `prompt`, `completion`
   - `input_cache_read`, `input_cache_write`
   - `internal_reasoning`, `input_audio_cache`
