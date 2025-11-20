@@ -216,7 +216,8 @@ function update_db(;
     cache = get_global_cache()
     now_time = now()
 
-    models = list_models(api_key)
+    # Use internal unfiltered list to avoid recursion through provider-filtering list_models
+    models = _list_models_unfiltered(api_key)
     for model in models
         if full_refresh || !haskey(cache.models, model.id)
             cache.models[model.id] = CachedModel(model, nothing, now_time, false)

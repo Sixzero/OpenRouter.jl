@@ -13,14 +13,18 @@ using Aqua
     end
     
     @testset "Cache operations" begin
-        cache = update_db(fetch_endpoints = false)
-        @test length(cache.models) > 0
+        if isempty(get(ENV, "OPENROUTER_API_KEY", ""))
+            @info "Skipping cache operations tests: OPENROUTER_API_KEY not set"
+        else
+            cache = update_db(fetch_endpoints = false)
+            @test length(cache.models) > 0
 
-        # Pick one model id
-        any_id = first(keys(cache.models))
-        cm = get_model(any_id, fetch_endpoints = false)
-        @test cm !== nothing
-        @test cm.model.id == any_id
+            # Pick one model id
+            any_id = first(keys(cache.models))
+            cm = get_model(any_id, fetch_endpoints = false)
+            @test cm !== nothing
+            @test cm.model.id == any_id
+        end
     end
     
     @testset "Provider model parsing" begin
