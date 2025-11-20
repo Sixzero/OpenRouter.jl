@@ -18,6 +18,6 @@ makedocs(;
 )
 
 deploydocs(;
-    repo="github.com/sixzero/OpenRouter.jl",
+    repo="github.com/Sixzero/OpenRouter.jl",
     devbranch="master",
 )
