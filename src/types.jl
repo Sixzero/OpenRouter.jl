@@ -127,6 +127,23 @@ Base.:+(a::TokenCounts, b::TokenCounts) = TokenCounts(
     input_audio_cache = a.input_audio_cache + b.input_audio_cache
 )
 
+# Custom display for TokenCounts - only show non-zero fields
+function Base.show(io::IO, tc::TokenCounts)
+    fields = []
+    for field in fieldnames(TokenCounts)
+        value = getfield(tc, field)
+        if value != 0
+            push!(fields, "$field=$value")
+        end
+    end
+
+    if isempty(fields)
+        print(io, "TokenCounts(all zeros)")
+    else
+        print(io, "TokenCounts(", join(fields, ", "), ")")
+    end
+end
+
 """
     parse_models(json_str::String)::Vector{OpenRouterModel}
 

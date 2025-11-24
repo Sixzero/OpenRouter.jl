@@ -148,7 +148,7 @@ function extract_reasoning_from_chunk(schema::AnthropicSchema, chunk::StreamChun
 end
 
 # Default: no reasoning extraction for other schemas
-extract_reasoning_from_chunk(schema::AbstractRequestSchema, chunk::StreamChunk) = nothing
+extract_reasoning_from_chunk(schema::AbstractRequestSchema, chunk::AbstractStreamChunk) = nothing
 
 # Extract stop sequence
 function extract_stop_sequence_from_chunk(schema::AbstractRequestSchema, chunk::StreamChunk)
@@ -278,6 +278,35 @@ function streamed_request!(cb::HttpStreamHooks, url, headers, input::String; kwa
         # Validate content type
         content_type = [header[2] for header in response.headers if lowercase(header[1]) == "content-type"]
         @assert length(content_type) == 1 "Content-Type header must be present and unique"
+        
+        # If we have an error status code and JSON content type, read the error body first
+        if response.status >= 400 && occursin("application/json", lowercase(content_type[1]))
+            error_body = String(read(stream))
+            HTTP.closeread(stream)
+            
+            # Try to parse and display the actual error
+            try
+                error_json = JSON3.read(error_body)
+                error_msg = if haskey(error_json, :error)
+                    error_detail = error_json.error
+                    if isa(error_detail, AbstractDict)
+                        get(error_detail, :message, string(error_detail))
+                    else
+                        string(error_detail)
+                    end
+                else
+                    error_body
+                end
+                throw(HTTP.RequestError(response, "API Error ($(response.status)): $error_msg"))
+            catch e
+                if e isa HTTP.RequestError
+                    rethrow(e)
+                else
+                    throw(HTTP.RequestError(response, "API Error ($(response.status)): $error_body"))
+                end
+            end
+        end
+        
         @assert occursin("text/event-stream", lowercase(content_type[1])) """
             Content-Type header should include text/event-stream.
             Received: $(content_type[1])

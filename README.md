@@ -182,7 +182,7 @@ callback = HttpStreamCallback(; out = stdout)
 msg = aigen(
     "Count to 20, one number per line.",
     "cerebras:openai/gpt-oss-120b";
-    stream_callback = callback,
+    streamcallback = callback,
 )
 
 println()

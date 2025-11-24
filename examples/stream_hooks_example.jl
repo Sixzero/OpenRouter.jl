@@ -11,6 +11,6 @@ callback = HttpStreamHooks(
     content_formatter = text -> uppercase(text)  # Make all content uppercase
 )
 # callback = HttpStreamCallback(; out=stdout)
-response = aigen("Count to 1-10 in 1 line:", "anthropic:anthropic/claude-haiku-4.5"; stream_callback=callback)
-response = aigen("Count to 1-10 in 1 line:", "anthropic:anthropic/claude-haiku-4.5"; stream_callback=callback)
-response = aigen("Count to 1-10 in 1 line:", "anthropic:anthropic/claude-haiku-4.5")
+response = aigen("Count to 1-10 in 1 line:", "anthropic:anthropic/claude-haiku-4.5"; streamcallback=callback)
+#%%
+response = aigen("Count to 1-100 in 1 line:", "anthropic:anthropic/claude-haiku-4.5", streamcallback=callback, cache=:all)

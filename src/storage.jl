@@ -18,6 +18,40 @@ end
 # Global cache variable
 const GLOBAL_CACHE = Ref{Union{ModelCache, Nothing}}(nothing)
 
+# Global aliases - mapping short forms to provider:model format
+const MODEL_ALIASES = Dict{String, String}(
+    "gemf" => "google-ai-studio:google/gemini-2.5-flash-preview-09-2025",
+    "gemfl" => "google-ai-studio:google/gemini-2.5-flash-lite-preview-09-2025",
+    "claude" => "anthropic:anthropic/claude-sonnet-4.5",
+    "gpt5" => "openai:openai/gpt-5.1",
+    "deepseek" => "deepseek:deepseek/deepseek-chat-v3.2",
+)
+
+"""
+    resolve_model_alias(model_id::String)::String
+
+Resolve a model alias to the full provider:model format.
+If the input is not an alias, returns it unchanged.
+
+# Example
+```julia
+resolve_model_alias("gemf")  # Returns "google-ai-studio:google/gemini-2.5-flash-preview-09-2025"
+resolve_model_alias("anthropic:claude-3-sonnet")  # Returns unchanged
+```
+"""
+function resolve_model_alias(model_id::AbstractString)::AbstractString
+    return get(MODEL_ALIASES, model_id, model_id)
+end
+
+"""
+    list_aliases()::Dict{String, String}
+
+List all available model aliases.
+"""
+function list_aliases()::Dict{String, String}
+    return copy(MODEL_ALIASES)
+end
+
 get_cache_dir() = @get_scratch!("openrouter_cache")
 get_cache_file() = joinpath(get_cache_dir(), "models.json")
 

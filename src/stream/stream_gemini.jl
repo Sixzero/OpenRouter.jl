@@ -27,19 +27,46 @@
 end
 
 """
-    extract_content(schema::GeminiSchema, chunk::AbstractStreamChunk; kwargs...)
+    extract_reasoning_from_chunk(schema::GeminiSchema, chunk::StreamChunk)
 
-Extract content from Gemini chunk.
+Extract reasoning/thinking content from Gemini chunk (parts with "thought": true).
 """
-@inline function extract_content(schema::GeminiSchema, chunk::AbstractStreamChunk; kwargs...)
+function extract_reasoning_from_chunk(schema::GeminiSchema, chunk::StreamChunk)
     if !isnothing(chunk.json) && haskey(chunk.json, :candidates)
         candidates = chunk.json[:candidates]
         if !isempty(candidates)
             candidate = candidates[1]
             if haskey(candidate, :content) && haskey(candidate[:content], :parts)
                 parts = candidate[:content][:parts]
-                if !isempty(parts) && haskey(parts[1], :text)
-                    return parts[1][:text]
+                for part in parts
+                    # Check if this part is marked as thought/reasoning
+                    if get(part, :thought, false) && haskey(part, :text)
+                        return part[:text]
+                    end
+                end
+            end
+        end
+    end
+    return nothing
+end
+
+"""
+    extract_content(schema::GeminiSchema, chunk::StreamChunk; kwargs...)
+
+Extract regular (non-reasoning) content from Gemini chunk.
+"""
+@inline function extract_content(schema::GeminiSchema, chunk::StreamChunk; kwargs...)
+    if !isnothing(chunk.json) && haskey(chunk.json, :candidates)
+        candidates = chunk.json[:candidates]
+        if !isempty(candidates)
+            candidate = candidates[1]
+            if haskey(candidate, :content) && haskey(candidate[:content], :parts)
+                parts = candidate[:content][:parts]
+                for part in parts
+                    # Only extract text that is NOT marked as thought
+                    if !get(part, :thought, false) && haskey(part, :text)
+                        return part[:text]
+                    end
                 end
             end
         end
@@ -57,7 +84,9 @@ function build_response_body(schema::GeminiSchema, cb::AbstractLLMStream; verbos
     
     response = nothing
     content_parts = String[]
+    reasoning_parts = String[]
     final_candidate = nothing
+    final_usage_metadata = nothing
     
     for chunk in cb.chunks
         isnothing(chunk.json) && continue
@@ -75,24 +104,52 @@ function build_response_body(schema::GeminiSchema, cb::AbstractLLMStream; verbos
                 parts = candidate[:content][:parts]
                 for part in parts
                     if haskey(part, :text)
-                        push!(content_parts, part[:text])
+                        # Separate reasoning from regular content
+                        if get(part, :thought, false)
+                            push!(reasoning_parts, part[:text])
+                        else
+                            push!(content_parts, part[:text])
+                        end
                     end
                 end
             end
         end
+        
+        # Track the final usage metadata (appears in last chunk with complete token counts)
+        if haskey(chunk.json, :usageMetadata)
+            final_usage_metadata = chunk.json[:usageMetadata]
+        end
     end
     
-    if !isnothing(response) && !isnothing(final_candidate) && !isempty(content_parts)
+    if !isnothing(response) && !isnothing(final_candidate)
         full_content = join(content_parts)
+        full_reasoning = join(reasoning_parts)
         
         # Build final candidate with accumulated content and final state
         final_candidate_dict = Dict(final_candidate)
-        final_candidate_dict[:content] = Dict(
-            :parts => [Dict(:text => full_content)],
-            :role => get(get(final_candidate_dict, :content, Dict()), :role, "model")
-        )
+        
+        # Build parts array with both reasoning and content if present
+        parts = []
+        if !isempty(full_reasoning)
+            push!(parts, Dict(:text => full_reasoning, :thought => true))
+        end
+        if !isempty(full_content)
+            push!(parts, Dict(:text => full_content))
+        end
+        
+        if !isempty(parts)
+            final_candidate_dict[:content] = Dict(
+                :parts => parts,
+                :role => get(get(final_candidate_dict, :content, Dict()), :role, "model")
+            )
+        end
         
         response[:candidates] = [final_candidate_dict]
+        
+        # Preserve the final usage metadata with complete token counts
+        if !isnothing(final_usage_metadata)
+            response[:usageMetadata] = final_usage_metadata
+        end
     end
     
     return response

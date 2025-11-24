@@ -49,14 +49,14 @@ function list_models(provider_filter::Union{String, Nothing} = nothing, api_key:
     end
 
     # Filter models by provider endpoints
-    provider_lower = lowercase(provider_filter)
+    provider_lower = lowercase(replace(provider_filter, "-" => " "))
     filtered_models = OpenRouterModel[]
 
     for cached_model in values(cache.models)
         if cached_model.endpoints !== nothing
             # Check if any endpoint is hosted by the requested provider
             has_provider = any(cached_model.endpoints.endpoints) do endpoint
-                lowercase(endpoint.provider_name) == provider_lower
+                lowercase(replace(endpoint.provider_name)) == provider_lower
             end
 
             if has_provider

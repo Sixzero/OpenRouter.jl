@@ -249,6 +249,7 @@ end
 Get the provider info for a given slug, or `nothing` if unknown.
 """
 function get_provider_info(provider_slug::AbstractString)::Union{ProviderInfo,Nothing}
+    provider_slug = resolve_model_alias(provider_slug)
     return get(PROVIDER_INFO, lowercase(provider_slug), nothing)
 end
 
@@ -315,10 +316,29 @@ end
 function is_known_provider(provider_slug::AbstractString)::Bool
     return haskey(PROVIDER_INFO, provider_slug)
 end
+
 """
-Get the appropriate schema for a provider info.
+    extract_provider_from_model(model_name::String) -> String
+
+Extract provider name from model name in format "provider:author/model_id" or fallback to "openai".
+
+# Examples
+```julia
+extract_provider_from_model("openai:openai/gpt-4") # => "openai"
+extract_provider_from_model("anthropic:anthropic/claude-3-5-sonnet") # => "anthropic"
+extract_provider_from_model("cerebras:meta-llama/llama-3.1-8b") # => "cerebras"
+extract_provider_from_model("gpt-4") # => "openai" (fallback)
+```
 """
-get_provider_schema(provider_info::ProviderInfo)::AbstractRequestSchema = provider_info.schema
+function extract_provider_from_model(model_name::String)
+    model_name = resolve_model_alias(model_name)
+    colon_idx = findfirst(':', model_name)
+    if colon_idx !== nothing
+        return lowercase(model_name[1:colon_idx-1])
+    end
+    @warn "Provider was missing from slug: $model_name"
+    return "openai"
+end
 
 """
 Calculate cost for a given endpoint and token usage.
@@ -338,4 +358,18 @@ function calculate_cost(endpoint::ProviderEndpoint, tokens::Union{Nothing,Dict})
 
     return cost
 end
+
+"""
+Get the appropriate schema for a provider info and model.
+For OpenAI, use ResponseSchema for gpt-5 and o-series models.
+"""
+function get_provider_schema(provider_info::ProviderInfo, model_id::AbstractString)::AbstractRequestSchema
+    # Special case: OpenAI's gpt-5 and o-series use Response API
+    if provider_info.schema isa ChatCompletionSchema && 
+       (startswith(model_id, "gpt-5") || startswith(model_id, "o1-") || startswith(model_id, "o3-"))
+        return ResponseSchema()
+    end
+    return provider_info.schema
+end
+
 

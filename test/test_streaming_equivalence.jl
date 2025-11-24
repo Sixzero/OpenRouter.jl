@@ -29,10 +29,8 @@ callback = HttpStreamHooks(
     content_formatter = text -> uppercase(text)  # Make all content uppercase
 )
 
-                    raw_stream = aigen_raw(prompt, provider_model; stream_callback=callback)
-                    @show raw_stream.result
+                    raw_stream = aigen_raw(prompt, provider_model; streamcallback=callback)
                     raw_normal = aigen_raw(prompt, provider_model)
-                    @show raw_normal.result
                     
                     # Test that components are the same
                     @test raw_stream.schema == raw_normal.schema
@@ -92,7 +90,7 @@ function test_aimessage_equivalence()
         try
             # Get AIMessage responses
             callback = HttpStreamCallback(; out=devnull, verbose=false)
-            response_stream = aigen(prompt, provider_model; stream_callback=callback)
+            response_stream = aigen(prompt, provider_model; streamcallback=callback)
             response_normal = aigen(prompt, provider_model)
             
             # Test basic properties

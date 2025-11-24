@@ -1,25 +1,26 @@
 abstract type AbstractMessage end
 
 Base.@kwdef struct UserMessage <: AbstractMessage
-    content::Any
+    content::AbstractString
     name::Union{Nothing, String} = nothing
     image_data::Union{Nothing, Vector{String}} = nothing  # base64 or data URLs
     extras::Union{Nothing, Dict{Symbol, Any}} = nothing
 end
 
 Base.@kwdef struct AIMessage <: AbstractMessage
-    content::Any
+    content::AbstractString
     name::Union{Nothing, String} = nothing
     image_data::Union{Nothing, Vector{String}} = nothing
     finish_reason::Union{Nothing, String} = nothing
     tokens::Union{Nothing, TokenCounts} = nothing
     elapsed::Float64 = -1.0
     cost::Union{Nothing, Float64} = nothing
+    reasoning::Union{Nothing, String} = nothing  # Store reasoning/thinking content
     extras::Union{Nothing, Dict{Symbol, Any}} = nothing
 end
 
 Base.@kwdef struct SystemMessage <: AbstractMessage
-    content::Any
+    content::AbstractString
     name::Union{Nothing, String} = nothing
     extras::Union{Nothing, Dict{Symbol, Any}} = nothing
 end
@@ -120,19 +121,23 @@ function to_openai_messages(msgs::Vector{AbstractMessage})
 end
 
 # Anthropic-style: role + content=[{type="text", text=...}, ...]
-to_anthropic_content(x) = isa(x, AbstractString) ? Any[Dict("type" => "text", "text" => x)] : x
+to_anthropic_content(x) = isa(x, AbstractString) ? Any[Dict{String, Any}("type" => "text", "text" => x)] : x
 
-function to_anthropic_messages(msgs::Vector{AbstractMessage})
+function to_anthropic_messages(msgs::Vector{AbstractMessage}; cache::Union{Nothing,Symbol}=nothing)
     out = Any[]
     for m in msgs
+        # Skip SystemMessage - it should be handled separately in build_payload
+        if m isa SystemMessage
+            continue
+        end
+        
         role = m isa UserMessage ? "user" :
-               m isa AIMessage   ? "assistant" :
-               m isa SystemMessage ? "system" :
+               m isa AIMessage ? "assistant" :
                error("Unknown message type $(typeof(m)) for Anthropic schema")
 
         # Handle images for UserMessage
         if m isa UserMessage && m.image_data !== nothing && !isempty(m.image_data)
-            content = Any[Dict("type" => "text", "text" => m.content)]
+            content = Any[Dict{String, Any}("type" => "text", "text" => m.content)]
             for img in m.image_data
                 data_type, data = extract_image_attributes(img)
                 @assert data_type in ["image/jpeg", "image/png", "image/gif", "image/webp"] "Unsupported image type: $data_type"
@@ -146,12 +151,29 @@ function to_anthropic_messages(msgs::Vector{AbstractMessage})
         end
 
         msg_dict = Dict("role" => role, "content" => content)
-        if m.name !== nothing
-            msg_dict["name"] = m.name
-        end
 
         push!(out, msg_dict)
     end
+
+    # Apply Anthropic prompt caching markers if requested
+    if cache !== nothing
+        @assert cache in (:system, :tools, :last, :all, :all_but_last) "Unsupported cache mode: $cache"
+        # Only user messages are considered here; system is handled in build_payload
+        user_msg_counter = 0
+        for i in reverse(eachindex(out))
+            out[i]["role"] == "user" || continue
+            haskey(out[i], "content") && !isempty(out[i]["content"]) || continue
+            last_block = out[i]["content"][end]
+            cache === :last && user_msg_counter == 0 &&
+                (last_block["cache_control"] = Dict("type" => "ephemeral"))
+            cache === :all && user_msg_counter < 2 &&
+                (last_block["cache_control"] = Dict("type" => "ephemeral"))
+            cache === :all_but_last && user_msg_counter == 1 &&
+                (last_block["cache_control"] = Dict("type" => "ephemeral"))
+            user_msg_counter += 1
+        end
+    end
+
     return out
 end
 
@@ -159,6 +181,16 @@ end
 function to_gemini_contents(msgs::Vector{AbstractMessage})
     out = Any[]
     for m in msgs
+        # Skip SystemMessage - handled separately
+        if m isa SystemMessage
+            continue
+        end
+        
+        # Determine role
+        role = m isa UserMessage ? "user" :
+               m isa AIMessage ? "model" :
+               error("Unknown message type $(typeof(m)) for Gemini schema")
+        
         if m isa UserMessage && m.image_data !== nothing && !isempty(m.image_data)
             # Gemini multimodal format
             parts = Any[Dict("text" => m.content)]
@@ -167,11 +199,11 @@ function to_gemini_contents(msgs::Vector{AbstractMessage})
                 # Gemini expects inline_data format
                 push!(parts, Dict("inline_data" => Dict("mime_type" => data_type, "data" => data)))
             end
-            push!(out, Dict("parts" => parts))
+            push!(out, Dict("role" => role, "parts" => parts))
         elseif isa(m.content, AbstractString)
-            push!(out, Dict("parts" => Any[Dict("text" => m.content)]))
+            push!(out, Dict("role" => role, "parts" => Any[Dict("text" => m.content)]))
         else
-            push!(out, m.content)
+            push!(out, Dict("role" => role, "parts" => m.content))
         end
     end
     return out

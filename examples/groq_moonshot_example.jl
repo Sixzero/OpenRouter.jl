@@ -6,7 +6,8 @@ using OpenRouter
 # Basic usage
 @time response = aigen(
     "Write a haiku about Julia programming", 
-    "groq:moonshotai/kimi-k2-0905"
+    # "groq:moonshotai/kimi-k2-0905"
+    "google-ai-studio:google/gemini-3-pro-preview",
     # "anthropic:anthropic/claude-haiku-4.5"
     # "openai:openai/gpt-5.1"
 )
@@ -15,11 +16,12 @@ println(response)
 using OpenRouter
 
 # list_models("openai")
-mm = list_models("openai")
-mm = list_models("google")
 mm = list_models("anthropic")
 mm = list_models("groq")
 mm = list_models("cerebras")
+mm = list_models("google")
+mm = list_models("google-ai-studio")
+mm = list_models("openai")
 display([m.id for m in mm])
 
 #%%
@@ -30,13 +32,16 @@ models = list_models()
 [m.id for m in models if contains(m.id, "kimi-k2")] .|> println
 #%%
 # Show endpoints for groq
-# groq_eps = list_provider_endpoints("anthropic")
+groq_eps = list_provider_endpoints("anthropic")
 groq_eps = list_provider_endpoints("groq")
+groq_eps = list_provider_endpoints("google-ai-studio")
 
 for m in groq_eps
-    println(m)
+    println(m.name)
 end
 # println("Groq hosts $(length(groq_eps)) endpoints")
+#%%
+list_providers()
 #%%
 
 # With parameters
