@@ -33,7 +33,7 @@ struct OpenRouterModel
     created::Union{Int, Nothing}
 end
 
-struct ProviderEndpoint
+@kwdef struct ProviderEndpoint
     name::String
     model_name::String
     context_length::Union{Int, Nothing}

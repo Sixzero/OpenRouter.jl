@@ -221,12 +221,18 @@ function parse_provider_model(provider_model::AbstractString)
     # Get the cached model with endpoints
     cached_model = get_model(model_id; fetch_endpoints=true)
     if cached_model === nothing
-        # Get available models from this provider for helpful error message
+        # Special handling for local providers (e.g. Ollama) that don't have OpenRouter metadata
+        if lowercase(provider_name) == "ollama"
+            transformed_model_id = transform_model_name(provider_info, model_id)
+            stub_endpoint = create_stub_endpoint(provider_name, model_id)
+            return provider_info, transformed_model_id, stub_endpoint
+        end
+        
+        # For other providers, this is an error - show helpful message
         available_models = list_models(lowercase(provider_name))
         model_ids = [m.id for m in available_models]
         hint = "\nHint: Available models for $provider_name: $(join(model_ids, ", "))"
-        @warn("Model not found: $model_id. Use update_db() to refresh the model database.$hint")
-        return provider_info, model_id, nothing
+        throw(ArgumentError("Model not found: $model_id. Use update_db() to refresh the model database.$hint"))
     end
     
     provider_lower = lowercase(provider_name)

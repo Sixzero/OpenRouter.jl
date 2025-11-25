@@ -383,4 +383,32 @@ function get_provider_schema(provider_info::ProviderInfo, model_id::AbstractStri
     return provider_info.schema
 end
 
+"""
+    create_stub_endpoint(provider_name::String, model_id::String)::ProviderEndpoint
 
+Create a stub ProviderEndpoint with zero pricing for local/non-OpenRouter providers.
+Used for providers like Ollama that don't have OpenRouter metadata.
+"""
+create_stub_endpoint(provider_name::AbstractString, model_id::AbstractString) = create_stub_endpoint(string(provider_name), string(model_id))
+function create_stub_endpoint(provider_name::String, model_id::String)::ProviderEndpoint
+    zero_pricing = Pricing(
+        "0", "0", "0", "0", "0", "0",
+        nothing, nothing, nothing, "0", nothing, nothing
+    )
+    
+    return ProviderEndpoint(
+        name = model_id,
+        model_name = model_id,
+        context_length = nothing,
+        pricing = zero_pricing,
+        provider_name = provider_name,
+        tag = nothing,
+        quantization = nothing,
+        max_completion_tokens = nothing,
+        max_prompt_tokens = nothing,
+        supported_parameters = nothing,
+        uptime_last_30m = nothing,
+        supports_implicit_caching = nothing,
+        status = nothing
+    )
+end
