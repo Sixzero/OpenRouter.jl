@@ -1,6 +1,6 @@
 using JSON3
 
-struct Pricing
+Base.@kwdef struct Pricing
     prompt::Union{String, Nothing}
     completion::Union{String, Nothing}
     request::Union{String, Nothing}

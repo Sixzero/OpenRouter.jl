@@ -100,6 +100,15 @@ end
 # Extract tokens from Response API usage format
 function extract_tokens(schema::ResponseSchema, response::Union{Dict, JSON3.Object})
     usage = get(response, "usage", nothing)
+    
+    # For response.completed events, check nested response.usage
+    if usage === nothing
+        nested_response = get(response, "response", nothing)
+        if nested_response !== nothing
+            usage = get(nested_response, "usage", nothing)
+        end
+    end
+    
     isnothing(usage) && return nothing
     
     prompt_tokens = get(usage, "input_tokens", 0)

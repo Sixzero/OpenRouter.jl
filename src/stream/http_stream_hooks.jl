@@ -75,14 +75,14 @@ A stream callback that combines token counting with customizable hooks for vario
     kwargs::NamedTuple = NamedTuple()
     run_info::RunInfo = RunInfo()
     model::Union{String,Nothing} = nothing
-    total_tokens::TokenCounts = TokenCounts()  # Now using the universal TokenCounts
-    
+    acc_tokens::TokenCounts = TokenCounts()  # Accumulated token counts (schema‑specific)
+
     # Internal state
     in_reasoning_mode::Bool = false
-    
+
     # Provider endpoint for cost calculation
     provider_endpoint::Union{ProviderEndpoint, Nothing} = nothing
-    
+
     # Hooks with default implementations
     content_formatter::Function = identity
     reasoning_formatter::Function = text -> "$(REASONING_COLOR)$text$(RESET_COLOR)"
@@ -125,25 +125,25 @@ end
 # Extract reasoning content for thinking models
 function extract_reasoning_from_chunk(schema::AnthropicSchema, chunk::StreamChunk)
     isnothing(chunk.json) && return nothing
-    
+
     chunk_type = get(chunk.json, :type, nothing)
-    
+
     if chunk_type == "content_block_start" || chunk_type == "content_block_stop"
         content_block = get(chunk.json, :content_block, Dict())
         block_type = get(content_block, :type, nothing)
-        
+
         if block_type == "thinking"
             return get(content_block, :thinking, nothing)
         end
     elseif chunk_type == "content_block_delta"
         delta = get(chunk.json, :delta, Dict())
         delta_type = get(delta, :type, nothing)
-        
+
         if delta_type == "thinking_delta"
             return get(delta, :thinking, nothing)
         end
     end
-    
+
     return nothing
 end
 
@@ -153,7 +153,7 @@ extract_reasoning_from_chunk(schema::AbstractRequestSchema, chunk::AbstractStrea
 # Extract stop sequence
 function extract_stop_sequence_from_chunk(schema::AbstractRequestSchema, chunk::StreamChunk)
     isnothing(chunk.json) && return nothing
-    
+
     # Schema-specific stop sequence extraction
     if schema isa ChatCompletionSchema
         choices = get(chunk.json, :choices, [])
@@ -168,29 +168,33 @@ function extract_stop_sequence_from_chunk(schema::AbstractRequestSchema, chunk::
             return get(candidates[1], :finishReason, nothing)
         end
     end
-    
+
     return nothing
 end
 
 # Handle token metadata with schema-specific dispatch
-function handle_token_metadata_for_schema(schema::AbstractRequestSchema, cb::HttpStreamHooks, 
+function handle_token_metadata_for_schema(schema::AbstractRequestSchema, cb::HttpStreamHooks,
                                          tokens::TokenCounts, cost::Float64, elapsed::Float64)
+                                         @show tokens
     # Determine if this is user or AI metadata based on token types
-    if tokens.prompt_tokens > 0 && tokens.completion_tokens == 0
+    if tokens.prompt_tokens > 0 && (tokens.completion_tokens == 0 || isnothing(tokens.completion_tokens))
         msg = cb.on_meta_usr(tokens, cost, elapsed)
     else
         msg = cb.on_meta_ai(tokens, cost, elapsed)
     end
-    
-    isa(msg, AbstractString) && println(cb.out, msg)
+    msg
 end
 
-# Extract tokens from chunk using existing schema methods
-function extract_tokens_from_chunk(schema::AbstractRequestSchema, chunk::StreamChunk)
-    isnothing(chunk.json) && return nothing
-    
-    # Use existing extract_tokens method from costs_tokens.jl
-    return extract_tokens(schema, chunk.json)
+"""
+Accumulate tokens according to schema-specific logic.
+
+# Schema-specific behavior
+- `AnthropicSchema`: Replaces values (Anthropic sends cumulative counts)
+- Other schemas: Adds values (most providers send deltas)
+"""
+function acc_tokens(schema::AbstractRequestSchema, accumulator::TokenCounts, new_tokens::TokenCounts)
+    # Default behavior: add tokens (delta-based counting)
+    return accumulator + new_tokens
 end
 
 # Main callback implementation - compatible with existing pattern
@@ -198,72 +202,78 @@ function callback(cb::HttpStreamHooks, chunk::StreamChunk; kwargs...)
     # Early return if no json
     isnothing(chunk.json) && return nothing
 
-    # Handle message start
-    if get(chunk.json, :type, nothing) == "message_start"
+    # Warn if schema is not configured
+    if isnothing(cb.schema)
+        @warn "HttpStreamHooks callback called without schema configuration" maxlog=1
+        return nothing
+    end
+
+    # Handle message start via schema-specific is_start
+    if is_start(cb.schema, chunk; kwargs...)
         cb.run_info.inference_start = time()
         msg = cb.on_start()
         isa(msg, AbstractString) && println(cb.out, msg)
     end
 
     # Extract model info if needed
-    if isnothing(cb.model) && !isnothing(cb.schema)
+    if isnothing(cb.model)
         cb.model = extract_model_from_chunk(cb.schema, chunk)
     end
 
     # Handle content
-    try
-        if !isnothing(cb.schema)
-            if (reasoning = extract_reasoning_from_chunk(cb.schema, chunk)) !== nothing
-                formatted = cb.reasoning_formatter(reasoning)
-                isa(formatted, AbstractString) && !cb.in_reasoning_mode && print(cb.out, "$(REASONING_COLOR)")
-                cb.in_reasoning_mode = true
-                isa(formatted, AbstractString) && print(cb.out, formatted)
-            elseif (text = extract_content(cb.schema, chunk; kwargs...)) !== nothing
-                formatted = cb.content_formatter(text)
-                if cb.in_reasoning_mode
-                    isa(formatted, AbstractString) && print(cb.out, "$(RESET_COLOR)\n\n")
-                    cb.in_reasoning_mode = false
-                end
-                isa(formatted, AbstractString) && print(cb.out, formatted)
-            end
+    if (reasoning = extract_reasoning_from_chunk(cb.schema, chunk)) !== nothing
+        formatted = cb.reasoning_formatter(reasoning)
+        if !cb.in_reasoning_mode
+            isa(formatted, AbstractString) && print(cb.out, "$(REASONING_COLOR)")
+            cb.in_reasoning_mode = true
         end
-    catch e
-        msg = cb.on_error(e)
-        isa(msg, AbstractString) && println(stderr, msg)
-        cb.throw_on_error && rethrow(e)
+        isa(formatted, AbstractString) && print(cb.out, formatted)
+    elseif (text = extract_content(cb.schema, chunk; kwargs...)) !== nothing
+        formatted = cb.content_formatter(text)
+        if cb.in_reasoning_mode
+            isa(formatted, AbstractString) && print(cb.out, "$(RESET_COLOR)\n\n")
+            cb.in_reasoning_mode = false
+        end
+        isa(formatted, AbstractString) && print(cb.out, formatted)
     end
 
     # Store stop sequence if present
-    if !isnothing(cb.schema) && (stop_seq = extract_stop_sequence_from_chunk(cb.schema, chunk)) !== nothing
+    if (stop_seq = extract_stop_sequence_from_chunk(cb.schema, chunk)) !== nothing
         cb.run_info.stop_sequence = stop_seq
         cb.on_stop_sequence(stop_seq)
-        msg = cb.on_done()
-        isa(msg, AbstractString) && println(cb.out, msg)
     end
 
     # Handle token metadata with schema-specific dispatch
-    if !isnothing(cb.schema) && (tokens = extract_tokens_from_chunk(cb.schema, chunk)) !== nothing
-        cb.total_tokens = cb.total_tokens + tokens
-        
+    if (tokens = extract_tokens(cb.schema, chunk.json)) !== nothing
+        # Use schema-specific accumulation logic
+        cb.acc_tokens = acc_tokens(cb.schema, cb.acc_tokens, tokens)
+
         # Use existing calculate_cost function with provider endpoint
         cost = 0.0
         if !isnothing(cb.provider_endpoint)
-            calculated_cost = calculate_cost(cb.provider_endpoint, cb.total_tokens)
+            calculated_cost = calculate_cost(cb.provider_endpoint, cb.acc_tokens)
             cost = calculated_cost !== nothing ? calculated_cost : 0.0
         end
-        
+
         cb.run_info.last_message_time = time()
         elapsed = get_total_elapsed(cb.run_info)
 
-        handle_token_metadata_for_schema(cb.schema, cb, tokens, cost, elapsed !== nothing ? elapsed : 0.0)
+        token_msg = handle_token_metadata_for_schema(cb.schema, cb, cb.acc_tokens, cost, elapsed !== nothing ? elapsed : 0.0)
+        isa(token_msg, AbstractString) && println(cb.out, token_msg)
     end
 
-    # Handle completion
-    if get(chunk.json, :type, nothing) in ("message_end", "message_stop")
+    # Handle completion - use schema's is_done logic
+    if is_done(cb.schema, chunk; kwargs...)
+        # Reset color if in reasoning mode
+        if cb.in_reasoning_mode
+            print(cb.out, "$(RESET_COLOR)")
+            cb.in_reasoning_mode = false
+        end
+
         msg = cb.on_done()
         isa(msg, AbstractString) && println(cb.out, msg)
     end
-    
+
     return nothing
 end
 
@@ -278,12 +288,12 @@ function streamed_request!(cb::HttpStreamHooks, url, headers, input::String; kwa
         # Validate content type
         content_type = [header[2] for header in response.headers if lowercase(header[1]) == "content-type"]
         @assert length(content_type) == 1 "Content-Type header must be present and unique"
-        
+
         # If we have an error status code and JSON content type, read the error body first
         if response.status >= 400 && occursin("application/json", lowercase(content_type[1]))
             error_body = String(read(stream))
             HTTP.closeread(stream)
-            
+
             # Try to parse and display the actual error
             try
                 error_json = JSON3.read(error_body)
@@ -306,7 +316,7 @@ function streamed_request!(cb::HttpStreamHooks, url, headers, input::String; kwa
                 end
             end
         end
-        
+
         @assert occursin("text/event-stream", lowercase(content_type[1])) """
             Content-Type header should include text/event-stream.
             Received: $(content_type[1])
@@ -318,30 +328,30 @@ function streamed_request!(cb::HttpStreamHooks, url, headers, input::String; kwa
 
         isdone = false
         spillover = ""
-        
+
         while !eof(stream) && !isdone
             masterchunk = String(readavailable(stream))
             chunks, spillover = extract_chunks(cb.schema, masterchunk; verbose, spillover, cb.kwargs...)
 
             for chunk in chunks
                 verbose && @debug "Chunk Data: $(chunk.data)"
-                
+
                 # Handle errors (always throw)
                 handle_error_message(chunk; verbose, cb.kwargs...)
-                
+
                 # Check for termination
                 is_done(cb.schema, chunk; verbose, cb.kwargs...) && (isdone = true)
-                
+
                 # Trigger callback
                 callback(cb, chunk; verbose, cb.kwargs...)
-                
+
                 # Store chunk
                 push!(cb.chunks, chunk)
             end
         end
         HTTP.closeread(stream)
     end
-    
+
     # Aesthetic newline for stdout
     cb.out == stdout && (println(); flush(stdout))
 

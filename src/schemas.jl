@@ -373,3 +373,79 @@ function extract_finish_reason(::GeminiSchema, result::Dict)
     end
     return nothing
 end
+
+"""
+Extract token usage information from API response based on schema.
+Returns TokenCounts struct with standardized field names.
+"""
+function extract_tokens(::ChatCompletionSchema, result::Union{Dict, JSON3.Object})
+    usage = get(result, "usage", nothing)
+    usage === nothing && return nothing
+    
+    prompt_tokens = get(usage, "prompt_tokens", 0)
+    completion_tokens = get(usage, "completion_tokens", 0)
+    total_tokens = get(usage, "total_tokens", prompt_tokens + completion_tokens)
+    
+    # Extract cached tokens if available
+    input_cache_read = 0
+    prompt_details = get(usage, "prompt_tokens_details", nothing)
+    if prompt_details !== nothing
+        input_cache_read = get(prompt_details, "cached_tokens", 0)
+    end
+    
+    return TokenCounts(
+        prompt_tokens = prompt_tokens,
+        completion_tokens = completion_tokens,
+        total_tokens = total_tokens,
+        input_cache_read = input_cache_read
+    )
+end
+
+function extract_tokens(schema::AnthropicSchema, response::Union{Dict, JSON3.Object})
+    # Try top-level usage first (message_delta chunks)
+    usage = get(response, "usage", nothing)
+    
+    # If not found, check nested message.usage (message_start chunks)
+    if isnothing(usage)
+        message = get(response, "message", nothing)
+        if !isnothing(message)
+            usage = get(message, :"usage", nothing)
+        end
+    end
+    
+    isnothing(usage) && return nothing
+    
+    input_tokens = get(usage, "input_tokens", 0)
+    output_tokens = get(usage, "output_tokens", 0)
+    
+    # Extract cache-related tokens (Anthropic naming -> TokenCounts naming)
+    cache_write_tokens = get(usage, "cache_creation_input_tokens", 0)
+    cache_read_tokens = get(usage, "cache_read_input_tokens", 0)
+    
+    return TokenCounts(
+        prompt_tokens = input_tokens,
+        completion_tokens = output_tokens,
+        total_tokens = input_tokens + output_tokens,
+        input_cache_write = cache_write_tokens,
+        input_cache_read = cache_read_tokens
+    )
+end
+
+function extract_tokens(::GeminiSchema, result::Union{Dict, JSON3.Object})
+    usage = get(result, "usageMetadata", nothing)
+    usage === nothing && return nothing
+    
+    prompt_tokens = get(usage, "promptTokenCount", 0)
+    completion_tokens = get(usage, "candidatesTokenCount", 0)
+    total_tokens = get(usage, "totalTokenCount", prompt_tokens + completion_tokens)
+    
+    # Gemini has thoughts tokens for reasoning models
+    internal_reasoning = get(usage, "thoughtsTokenCount", 0)
+    
+    return TokenCounts(
+        prompt_tokens = prompt_tokens,
+        completion_tokens = completion_tokens,
+        total_tokens = total_tokens,
+        internal_reasoning = internal_reasoning
+    )
+end

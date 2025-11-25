@@ -1,5 +1,5 @@
 using OpenRouter
-using OpenRouter: update_db
+using OpenRouter: update_db, calculate_cost, ChatCompletionSchema
 using Test
 using Aqua
 
@@ -28,16 +28,27 @@ using Aqua
     end
     
     @testset "Provider model parsing" begin
-        provider, model = OpenRouter.parse_provider_model("Together:moonshotai/kimi-k2-thinking")
-        @test provider == "Together"
-        @test model == "moonshotai/kimi-k2-thinking"
+        provider_info, model_id, endpoint = OpenRouter.parse_provider_model("Together:moonshotai/kimi-k2-thinking")
+        @test provider_info.base_url == "https://api.together.xyz/v1"
+        @test model_id == "moonshotai/kimi-k2-thinking"
+        @test endpoint isa OpenRouter.ProviderEndpoint
     end
 
     @testset "cost calculation with cache" begin
-        pricing = Pricing(prompt = 0.000002, completion = 0.000004,
-                          input_cache_read = 0.000001, input_cache_write = 0.0000015,
-                          internal_reasoning = nothing, input_audio_cache = nothing,
-                          discount = nothing)
+        pricing = Pricing(
+            prompt = "0.000002",
+            completion = "0.000004",
+            request = "0",
+            image = "0",
+            web_search = "0",
+            internal_reasoning = nothing,
+            image_output = nothing,
+            audio = nothing,
+            input_audio_cache = nothing,
+            input_cache_read = "0.000001",
+            input_cache_write = "0.0000015",
+            discount = nothing
+        )
         tokens = Dict(
             :prompt_tokens => 1000,
             :completion_tokens => 500,
@@ -50,17 +61,33 @@ using Aqua
 
     @testset "calculate_cost with ProviderEndpoint" begin
         pricing = Pricing(
-            prompt = 0.000002,
-            completion = 0.000004,
-            input_cache_read = 0.000001,
-            input_cache_write = 0.0000015,
+            prompt = "0.000002",
+            completion = "0.000004",
+            request = "0",
+            image = "0",
+            web_search = "0",
             internal_reasoning = nothing,
+            image_output = nothing,
+            audio = nothing,
             input_audio_cache = nothing,
+            input_cache_read = "0.000001",
+            input_cache_write = "0.0000015",
             discount = nothing,
         )
         endpoint = ProviderEndpoint(
-            # ... existing required fields ...,
+            name = "test-endpoint",
+            model_name = "test-model",
+            context_length = 8192,
             pricing = pricing,
+            provider_name = "test-provider",
+            tag = nothing,
+            quantization = nothing,
+            max_completion_tokens = nothing,
+            max_prompt_tokens = nothing,
+            supported_parameters = nothing,
+            uptime_last_30m = nothing,
+            supports_implicit_caching = nothing,
+            status = nothing
         )
         tokens = Dict(
             :prompt_tokens => 1000,

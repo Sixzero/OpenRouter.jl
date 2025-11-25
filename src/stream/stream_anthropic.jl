@@ -1,5 +1,18 @@
 # Custom methods for Anthropic streaming
 
+"""
+    is_start(schema::AnthropicSchema, chunk::AbstractStreamChunk; kwargs...)
+
+Check if streaming has started for Anthropic format.
+"""
+@inline function is_start(schema::AnthropicSchema, chunk::AbstractStreamChunk; kwargs...)
+    if !isnothing(chunk.json)
+        chunk_type = get(chunk.json, :type, nothing)
+        return chunk_type == "message_start" || chunk_type == :message_start
+    end
+    false
+end
+
 @inline function is_done(schema::AnthropicSchema, chunk::AbstractStreamChunk; kwargs...)
     chunk.event == :error || chunk.event == :message_stop
 end
@@ -40,6 +53,23 @@ function extract_content(schema::AnthropicSchema, chunk::AbstractStreamChunk;
     return nothing
 end
 
+function acc_tokens(schema::AnthropicSchema, accumulator::TokenCounts, new_tokens::TokenCounts)
+    # Anthropic sends cumulative counts, so replace rather than add
+    return new_tokens
+end
+# Handle token metadata with schema-specific dispatch
+function handle_token_metadata_for_schema(schema::AnthropicSchema, cb::HttpStreamHooks,
+                                         tokens::TokenCounts, cost::Float64, elapsed::Float64)
+                                         @show tokens
+    # Determine if this is user or AI metadata based on token types
+    if tokens.prompt_tokens > 0 && tokens.completion_tokens <= 3
+        msg = cb.on_meta_usr(tokens, cost, elapsed)
+    else
+        msg = cb.on_meta_ai(tokens, cost, elapsed)
+    end
+    msg
+end
+
 """
     build_response_body(schema::AnthropicSchema, cb::AbstractLLMStream; verbose::Bool = false, kwargs...)
 
@@ -57,23 +87,30 @@ function build_response_body(schema::AnthropicSchema, cb::AbstractLLMStream; ver
     for chunk in cb.chunks
         isnothing(chunk.json) && continue
         
-        # Core message body
-        if isnothing(response) && chunk.event == :message_start && haskey(chunk.json, :message)
+        chunk_type = get(chunk.json, :type, nothing)
+        
+        # Core message body from message_start
+        if chunk_type == "message_start" && haskey(chunk.json, :message)
             response = chunk.json[:message] |> copy
             usage = get(response, :usage, Dict())
         end
         
-        # Update stop reason and usage
-        if chunk.event == :message_delta
-            response = isnothing(response) ? get(copy(chunk.json), :delta, Dict()) :
-                       merge(response, get(chunk.json, :delta, Dict()))
-            usage = isnothing(usage) ? get(copy(chunk.json), :usage, Dict()) :
-                    merge(usage, get(chunk.json, :usage, Dict()))
+        # Update stop reason and usage from message_delta
+        if chunk_type == "message_delta"
+            delta = get(chunk.json, :delta, Dict())
+            response = isnothing(response) ? copy(delta) : merge(response, delta)
+            
+            # Extract usage from message_delta (this is where final token counts come)
+            chunk_usage = get(chunk.json, :usage, nothing)
+            if !isnothing(chunk_usage)
+                usage = isnothing(usage) ? copy(chunk_usage) : merge(usage, chunk_usage)
+            end
         end
 
-        # Load text chunks
-        if chunk.event == :content_block_start ||
-           chunk.event == :content_block_delta || chunk.event == :content_block_stop
+        # Load text chunks from content blocks
+        if chunk_type == "content_block_start" || 
+           chunk_type == "content_block_delta" || 
+           chunk_type == "content_block_stop"
             
             delta_block = get(chunk.json, :content_block, nothing)
             isnothing(delta_block) && (delta_block = get(chunk.json, :delta, Dict()))

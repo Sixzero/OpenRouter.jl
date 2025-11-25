@@ -1,11 +1,5 @@
 # Default methods for streaming interface
 
-"""
-    extract_chunks(schema::AbstractRequestSchema, blob::AbstractString;
-        spillover::AbstractString = "", verbose::Bool = false, kwargs...)
-
-Extract chunks from received SSE blob. Correctly implements SSE spec field parsing.
-"""
 
 @inline function _has_double_newline_end(s::AbstractString)
     endswith(s, "\n\n") || endswith(s, "\r\n\r\n")
@@ -54,6 +48,12 @@ end
     return msgs
 end
 
+"""
+    extract_chunks(schema::AbstractRequestSchema, blob::AbstractString;
+        spillover::AbstractString = "", verbose::Bool = false, kwargs...)
+
+Extract chunks from received SSE blob. Correctly implements SSE spec field parsing.
+"""
 @inline function extract_chunks(schema::AbstractRequestSchema, blob::AbstractString;
         spillover::AbstractString = "", verbose::Bool = false, kwargs...)
 

@@ -14,6 +14,22 @@ Check if streaming is done for Response API format.
     false
 end
 
+# Custom methods for Response API streaming (OpenAI gpt-5, o-series)
+
+"""
+    is_start(schema::ResponseSchema, chunk::AbstractStreamChunk; kwargs...)
+
+Check if streaming has started for Response API format.
+"""
+@inline function is_start(schema::ResponseSchema, chunk::AbstractStreamChunk; kwargs...)
+    if !isnothing(chunk.json)
+        chunk_type = get(chunk.json, "type", nothing)
+        # Response API starts with "response.in_progress"
+        return chunk_type == "response.in_progress"
+    end
+    false
+end
+
 """
     extract_content(schema::ResponseSchema, chunk::AbstractStreamChunk; kwargs...)
 

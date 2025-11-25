@@ -10,7 +10,7 @@ using OpenRouter: add_provider, remove_provider, add_model, remove_model, list_p
         
         # Add a custom provider
         add_provider("test-echo", "http://localhost:8080/v1", "Bearer", "TEST_API_KEY", 
-                    Dict{String,String}(), "Test echo server")
+                    Dict{String,String}(), nothing, ChatCompletionSchema(), "Test echo server")
         
         # Check it was added
         @test length(list_providers()) == initial_count + 1
@@ -18,7 +18,7 @@ using OpenRouter: add_provider, remove_provider, add_model, remove_model, list_p
         
         # Add another provider with different auth
         add_provider("test-custom", "http://localhost:9000/api", "x-api-key", nothing,
-                    Dict("Custom-Header" => "test-value"), "Custom test server")
+                    Dict("Custom-Header" => "test-value"), nothing, ChatCompletionSchema(), "Custom test server")
         
         @test length(list_providers()) == initial_count + 2
         @test "test-custom" in list_providers()
@@ -26,7 +26,6 @@ using OpenRouter: add_provider, remove_provider, add_model, remove_model, list_p
         # Remove providers
         remove_provider("test-echo")
         remove_provider("test-custom")
-        
         @test length(list_providers()) == initial_count
         @test "test-echo" ∉ list_providers()
         @test "test-custom" ∉ list_providers()

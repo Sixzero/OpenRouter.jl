@@ -4,9 +4,41 @@
     is_done(schema::ChatCompletionSchema, chunk::AbstractStreamChunk; kwargs...)
 
 Check if streaming is done for ChatCompletion format.
+Checks for finish_reason in choices or [DONE] marker.
 """
 @inline function is_done(schema::ChatCompletionSchema, chunk::AbstractStreamChunk; kwargs...)
-    chunk.data == "[DONE]"
+    # Check for [DONE] marker
+    chunk.data == "[DONE]" && return true
+
+    # Check for finish_reason in choices
+    if !isnothing(chunk.json)
+        choices = get(chunk.json, :choices, [])
+        if !isempty(choices)
+            first_choice = choices[1]
+            finish_reason = get(first_choice, :finish_reason, nothing)
+            # Any non-nothing finish_reason means we're done
+            return !isnothing(finish_reason)
+        end
+    end
+
+    return false
+end
+
+"""
+    is_start(schema::ChatCompletionSchema, chunk::AbstractStreamChunk; kwargs...)
+
+Check if streaming has started for ChatCompletion format.
+"""
+@inline function is_start(schema::ChatCompletionSchema, chunk::AbstractStreamChunk; kwargs...)
+    if !isnothing(chunk.json)
+        # OpenAI-compatible ChatCompletion streams typically send a role in the first delta
+        choices = get(chunk.json, :choices, [])
+        isempty(choices) && return false
+        first_choice = choices[1]
+        delta = get(first_choice, :delta, Dict())
+        return haskey(delta, :role)
+    end
+    false
 end
 
 """

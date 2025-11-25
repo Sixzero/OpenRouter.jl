@@ -1,5 +1,30 @@
 # Custom methods for Gemini streaming
 
+"""
+    is_start(schema::GeminiSchema, chunk::AbstractStreamChunk; kwargs...)
+
+Check if streaming has started for Gemini format.
+Gemini doesn't have explicit start events, so we check for first content with reasoning (thought=true).
+"""
+@inline function is_start(schema::GeminiSchema, chunk::AbstractStreamChunk; kwargs...)
+    if !isnothing(chunk.json) && haskey(chunk.json, :candidates)
+        candidates = chunk.json[:candidates]
+        if !isempty(candidates)
+            candidate = candidates[1]
+            if haskey(candidate, :content) && haskey(candidate[:content], :parts)
+                parts = candidate[:content][:parts]
+                # First chunk with reasoning marks the start
+                for part in parts
+                    if get(part, :thought, false) && haskey(part, :text)
+                        return true
+                    end
+                end
+            end
+        end
+    end
+    false
+end
+
 @inline function is_done(schema::GeminiSchema, chunk::AbstractStreamChunk; kwargs...)
     verbose = get(kwargs, :verbose, false)
     
@@ -74,6 +99,10 @@ Extract regular (non-reasoning) content from Gemini chunk.
     return nothing
 end
 
+function acc_tokens(schema::GeminiSchema, accumulator::TokenCounts, new_tokens::TokenCounts)
+    # GeminiSchema sends cumulative counts, so replace rather than add
+    return new_tokens
+end
 """
     build_response_body(schema::GeminiSchema, cb::AbstractLLMStream; verbose::Bool = false, kwargs...)
 
