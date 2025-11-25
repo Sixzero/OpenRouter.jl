@@ -5,7 +5,7 @@ using Aqua
 
 @testset "OpenRouter.jl" begin
     @testset "Code quality (Aqua.jl)" begin
-        # Aqua.test_all(OpenRouter)
+        Aqua.test_all(OpenRouter)
     end
     
     @testset "Basic functionality" begin

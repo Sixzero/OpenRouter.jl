@@ -179,7 +179,7 @@ end
 
 Do nothing if output stream is `nothing`.
 """
-@inline function print_content(out::Nothing, text::Any; kwargs...)
+@inline function print_content(out::Nothing, text::AbstractString; kwargs...)
     return nothing
 end
 

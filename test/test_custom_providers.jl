@@ -107,7 +107,7 @@ using OpenRouter: add_provider, remove_provider, add_model, remove_model, list_p
     @testset "Provider Info Retrieval" begin
         # Add a test provider
         add_provider("test-info", "http://test.local/v1", "Bearer", "TEST_KEY",
-                    Dict("X-Custom" => "value"), "Test provider info")
+                    Dict("X-Custom" => "value"), nothing, ChatCompletionSchema(), "Test provider info")
         
         # Test provider info retrieval
         info = OpenRouter.get_provider_info("test-info")
