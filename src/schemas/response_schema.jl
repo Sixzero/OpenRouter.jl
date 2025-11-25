@@ -12,7 +12,7 @@ function build_url(schema::ResponseSchema, base_url::String, model_id::AbstractS
 end
 
 # Build payload for Responses API
-function build_payload(schema::ResponseSchema, prompt, model_id::AbstractString, sys_msg, stream::Bool; kwargs...)
+function build_payload(schema::ResponseSchema, prompt, model_id::AbstractString, sys_msg, stream::Bool; reasoning=nothing, kwargs...)
     payload = Dict{String, Any}(
         "model" => model_id,
         "stream" => stream,
@@ -31,10 +31,14 @@ function build_payload(schema::ResponseSchema, prompt, model_id::AbstractString,
         payload["instructions"] = join([m.content for m in system_msgs], "\n\n")
     end
     
+    # Default reasoning config, merge user's reasoning if provided
+    default_reasoning = Dict("summary" => "detailed")
+    payload["reasoning"] = isnothing(reasoning) ? default_reasoning : merge(default_reasoning, reasoning)
+    
     # Forward supported parameters
     for (k, v) in kwargs
         if k in (:temperature, :top_p, :max_output_tokens, :tools, :tool_choice, 
-                 :parallel_tool_calls, :metadata, :reasoning, :text, :truncation,
+                 :parallel_tool_calls, :metadata, :text, :truncation,
                  :service_tier, :safety_identifier, :prompt_cache_key, :prompt_cache_retention)
             payload[string(k)] = v
         end
@@ -134,3 +138,4 @@ function extract_content(schema::ResponseSchema, response::Dict)
     
     return isempty(content_parts) ? nothing : join(content_parts, "")
 end
+

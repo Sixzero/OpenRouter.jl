@@ -226,7 +226,6 @@ function build_payload(::GeminiSchema, prompt, model_id::AbstractString, sys_msg
         "contents" => contents
     )
 
-    # Add system instruction if present
     if system_instruction !== nothing
         payload["system_instruction"] = system_instruction
     end
@@ -275,14 +274,9 @@ function build_payload(::GeminiSchema, prompt, model_id::AbstractString, sys_msg
         end
     end
     
-    # Always include thoughts; add budget 0 only if no thinkingLevel
+    # Always include thoughts
     thinking_config = Dict{String, Any}("include_thoughts" => true)
     isempty(user_thinking_config) || merge!(thinking_config, user_thinking_config)
-    
-    has_thinking_level = haskey(thinking_config, "thinkingLevel")
-    if !has_thinking_level && !haskey(thinking_config, "thinkingBudget") && !occursin("pro", model_id)
-        thinking_config["thinkingBudget"] = 0
-    end
     
     generation_config["thinkingConfig"] = thinking_config
     

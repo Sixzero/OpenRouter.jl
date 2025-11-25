@@ -61,18 +61,15 @@ function aigen_raw(prompt, provider_model::String;
 end
 
 """
-    aigen(prompt, provider_model::String; 
-          schema::Union{AbstractRequestSchema, Nothing} = nothing,
-          api_key::Union{String, Nothing} = nothing,
-          sys_msg = nothing,
-          streamcallback::Union{Nothing, AbstractLLMStream} = nothing,
-          kwargs...)
+    aigen(prompt, provider_model::String; ...)
+    aigen(prompt, config::ModelConfig; ...)
 
-Generate text using a specific provider and model.
+Generate text using a specific provider and model, or a ModelConfig.
 
 # Arguments
 - `prompt`: The input prompt (String or Vector of message dicts)
 - `provider_model::String`: Format "Provider:model/slug" (e.g., "Together:moonshotai/kimi-k2-thinking")
+- `config::ModelConfig`: Model configuration with slug and parameters
 
 # Keyword Arguments
 - `schema::Union{AbstractRequestSchema, Nothing}`: Request schema to use (auto-detected if not provided)
@@ -86,9 +83,12 @@ Generate text using a specific provider and model.
 
 # Example
 ```julia
+# Using string slug
 response = aigen("Write a haiku about Julia programming", "Together:moonshotai/kimi-k2-thinking")
-println(response.content)
-println("Cost: \$(response.cost)")
+
+# Using ModelConfig
+config = ModelConfig("openai:openai/gpt-5.1"; temperature=0.7, max_tokens=1000)
+response = aigen("Hello", config)
 
 # Using system message
 response = aigen("Hello", "Anthropic:claude-3-sonnet"; sys_msg="You are a helpful assistant")
@@ -127,6 +127,29 @@ function aigen(prompt, provider_model::String;
     )
 end
 
+# ModelConfig overload
+function aigen(prompt, config::ModelConfig;
+               api_key::Union{String, Nothing} = nothing,
+               sys_msg = nothing,
+               streamcallback::Union{Nothing, AbstractLLMStream} = nothing,
+               verbose=nothing,
+               kwargs...)
+    
+    # Extract config and merge kwargs
+    slug, schema, merged_kwargs = extract_config(config, kwargs)
+    
+    # Use schema from config if not overridden
+    schema = coalesce(get(kwargs, :schema, nothing), schema)
+    
+    return aigen(prompt, slug;
+                 schema=schema,
+                 api_key=api_key,
+                 sys_msg=sys_msg,
+                 streamcallback=streamcallback,
+                 verbose=verbose,
+                 merged_kwargs...)
+end
+
 """
 Core function that handles both streaming and non-streaming API calls.
 """
@@ -142,8 +165,14 @@ function _aigen_core(prompt, provider_info::ProviderInfo, model_id::AbstractStri
     protocolSchema = schema === nothing ? get_provider_schema(provider_info, model_id) : schema
     
     # Get API key (prefer explicit, otherwise env var)
-    api_key = api_key === nothing ? get(ENV, provider_info.api_key_env_var, "") : api_key
-    isempty(api_key) && throw(ArgumentError("API key not found in environment variable $(provider_info.api_key_env_var)"))
+    if api_key === nothing
+        if provider_info.api_key_env_var === nothing
+            api_key = ""  # providers like Ollama that don't require auth
+        else
+            api_key = get(ENV, provider_info.api_key_env_var, "")
+            isempty(api_key) && throw(ArgumentError("API key not found in environment variable $(provider_info.api_key_env_var)"))
+        end
+    end
     
     # Build request payload using schema (pass stream as positional argument)
     stream_flag = streamcallback !== nothing
@@ -177,7 +206,7 @@ function _aigen_core(prompt, provider_info::ProviderInfo, model_id::AbstractStri
     end
 end
 
-# Parse "Provider:model/slug" into (ProviderInfo, "transformed_model_id", ProviderEndpoint)
+# Parse "Provider:author/model_id" into (ProviderInfo, "transformed_model_id", ProviderEndpoint)
 function parse_provider_model(provider_model::AbstractString)
     parts = split(provider_model, ":", limit=2)
     length(parts) == 2 || throw(ArgumentError("Modelname must be in format \"provider:author/model_id\", got \"$provider_model\""))
@@ -196,7 +225,8 @@ function parse_provider_model(provider_model::AbstractString)
         available_models = list_models(lowercase(provider_name))
         model_ids = [m.id for m in available_models]
         hint = "\nHint: Available models for $provider_name: $(join(model_ids, ", "))"
-        throw(ArgumentError("Model not found: $model_id. Use update_db() to refresh the model database.$hint"))
+        @warn("Model not found: $model_id. Use update_db() to refresh the model database.$hint")
+        return provider_info, model_id, nothing
     end
     
     provider_lower = lowercase(provider_name)

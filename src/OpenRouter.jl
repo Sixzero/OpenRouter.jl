@@ -8,6 +8,7 @@ include("model_mapping.jl")
 include("messages.jl")
 include("schemas.jl")
 include("schemas/response_schema.jl")
+include("model_config.jl")
 include("costs_tokens.jl")
 include("providers.jl")
 include("providers_native.jl")
@@ -25,6 +26,7 @@ export list_native_models, list_endpoints
 
 # Types
 export OpenRouterModel, Pricing, Architecture, ProviderEndpoint, ModelProviders, CachedModel, ModelCache
+export ModelConfig, GeminiConfig
 
 # Streaming types
 export HttpStreamCallback, StreamChunk, HttpStreamHooks

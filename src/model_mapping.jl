@@ -182,6 +182,15 @@ function minimax_model_transform(model_id::AbstractString)::AbstractString
 end
 
 """
+    ollama_model_transform(model_id::String)::String
+
+Transform model IDs for Ollama. Currently returns unchanged.
+"""
+function ollama_model_transform(model_id::AbstractString)::AbstractString
+    return model_id
+end
+
+"""
     cohere_model_transform(model_id::String)::String
 
 Transform model IDs for Cohere. Currently returns unchanged.

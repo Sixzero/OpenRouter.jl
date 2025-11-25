@@ -189,7 +189,17 @@ const PROVIDER_INFO = Dict{String,ProviderInfo}(
         Dict("api-version" => "2023-03-15-preview"),
         nothing,
         ChatCompletionSchema(),
-        "Requires resource-specific host (AZURE_OPENAI_HOST) and deployment-based paths")
+        "Requires resource-specific host (AZURE_OPENAI_HOST) and deployment-based paths"),
+
+    # Local / native providers
+    "ollama" => ProviderInfo(
+        "http://localhost:11434/v1",
+        "Bearer",                     # Ignored; no auth_header needed when api_key is empty
+        nothing,                      # No env var; api_key optional
+        Dict{String,String}(),
+        ollama_model_transform,
+        ChatCompletionSchema(),
+        "Local Ollama instance using OpenAI-compatible /v1/chat/completions API"),
 )
 
 """
@@ -286,12 +296,13 @@ end
 Build complete headers for a provider request.
 """
 function build_headers(provider_info::ProviderInfo, api_key::AbstractString)
-    auth_header = get_provider_auth_header(provider_info, api_key)
+    headers = ["Content-Type" => "application/json"]
     
-    headers = [
-        auth_header,
-        "Content-Type" => "application/json"
-    ]
+    # Add auth header only if provider expects one and api_key is non-empty
+    if !isempty(api_key) && provider_info.auth_header_format != ""
+        auth_header = get_provider_auth_header(provider_info, api_key)
+        push!(headers, auth_header)
+    end
     
     # Add default headers for this provider
     for (k, v) in provider_info.default_headers

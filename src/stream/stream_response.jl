@@ -7,8 +7,9 @@ Check if streaming is done for Response API format.
 """
 @inline function is_done(schema::ResponseSchema, chunk::AbstractStreamChunk; kwargs...)
     if !isnothing(chunk.json)
-        # Handle done chunks with full text
-        return chunk_type = get(chunk.json, "type", nothing) == "response.output_text.done"
+        # Handle done chunks - response.completed signals the end
+        chunk_type = get(chunk.json, "type", nothing)
+        return chunk_type == "response.completed"
     end
     false
 end
@@ -30,6 +31,20 @@ Only extracts 'delta' to ensure stream consumers don't print duplicate content
     return nothing
 end
 
+# Extract reasoning content for Response API streaming (thinking models)
+function extract_reasoning_from_chunk(schema::ResponseSchema, chunk::StreamChunk)
+    isnothing(chunk.json) && return nothing
+    
+    chunk_type = get(chunk.json, :type, nothing)
+    
+    # Handle reasoning summary deltas
+    if chunk_type == "response.reasoning_summary_text.delta"
+        return get(chunk.json, :delta, nothing)
+    end
+    
+    return nothing
+end
+
 """
     build_response_body(schema::ResponseSchema, cb::AbstractLLMStream; verbose::Bool = false, kwargs...)
 
@@ -44,10 +59,10 @@ function build_response_body(schema::ResponseSchema, cb::AbstractLLMStream; verb
     # Use Iterators.reverse to avoid allocating a new array
     for chunk in Iterators.reverse(cb.chunks)
         if !isnothing(chunk.json) && get(chunk.json, "type", nothing) == "response.completed"
-            # return get(chunk.json, "response", nothing)
+            return get(chunk.json, "response", nothing)
         end
     end
-    
+    @warn "Probably we didn't receive usage informations."
     # Fallback: Reconstruct from delta chunks (Best Effort for interrupted streams)
     response = Dict{String, Any}(
         "object" => "response",
