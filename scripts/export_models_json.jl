@@ -192,7 +192,7 @@ function main()
 
     total_models = data["total_models"]
     println("✅ Exported $total_models models to $out_file")
-    run(`mv models_data_openrouter.json ../../todoforai/frontend/src/assets/models_data.json`)
+
 end
 
 main()
