@@ -417,31 +417,19 @@ function get_provider_schema(provider_info::ProviderInfo, model_id::AbstractStri
 end
 
 """
-    create_stub_endpoint(provider_name::String, model_id::String)::ProviderEndpoint
+    create_stub_endpoint(provider_name, model_id; pricing=nothing)
 
-Create a stub ProviderEndpoint with zero pricing for local/non-OpenRouter providers.
-Used for providers like Ollama that don't have OpenRouter metadata.
+Create a stub ProviderEndpoint for local/non-OpenRouter providers.
 """
-create_stub_endpoint(provider_name::AbstractString, model_id::AbstractString) = create_stub_endpoint(string(provider_name), string(model_id))
-function create_stub_endpoint(provider_name::String, model_id::String)::ProviderEndpoint
-    zero_pricing = Pricing(
-        "0", "0", "0", "0", "0", "0",
-        nothing, nothing, nothing, "0", nothing, nothing
-    )
-    
-    return ProviderEndpoint(
-        name = model_id,
-        model_name = model_id,
-        context_length = nothing,
-        pricing = zero_pricing,
-        provider_name = provider_name,
-        tag = nothing,
-        quantization = nothing,
-        max_completion_tokens = nothing,
-        max_prompt_tokens = nothing,
-        supported_parameters = nothing,
-        uptime_last_30m = nothing,
-        supports_implicit_caching = nothing,
-        status = nothing
-    )
+function create_stub_endpoint(provider_name::AbstractString, model_id::AbstractString; pricing=nothing)
+    ProviderEndpoint(; name=model_id, model_name=model_id, pricing, provider_name=string(provider_name),
+        context_length=nothing, tag=nothing, quantization=nothing, max_completion_tokens=nothing,
+        max_prompt_tokens=nothing, supported_parameters=nothing, uptime_last_30m=nothing,
+        supports_implicit_caching=nothing, status=nothing)
 end
+
+const ZERO_PRICING = Pricing("0", "0", "0", "0", "0", "0", nothing, nothing, nothing, "0", nothing, nothing)
+
+"""Create stub with zero pricing (for Ollama etc. where we want cost tracking)."""
+create_stub_endpoint_zero_pricing(provider_name, model_id) = 
+    create_stub_endpoint(provider_name, model_id; pricing=ZERO_PRICING)

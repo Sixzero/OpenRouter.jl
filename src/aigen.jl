@@ -217,9 +217,13 @@ function parse_provider_model(provider_model::AbstractString)
     cached_model = get_model(model_id; fetch_endpoints=true)
     if cached_model === nothing
         # Special handling for local providers (e.g. Ollama) that don't have OpenRouter metadata
-        if lowercase(provider_name) == "ollama" || startswith(lowercase(provider_name), "echo")
+        lc_name = lowercase(provider_name)
+        if lc_name == "ollama" || startswith(lc_name, "echo")
             transformed_model_id = transform_model_name(provider_info, model_id)
-            stub_endpoint = create_stub_endpoint(provider_name, model_id)
+            # Ollama gets zero pricing (cost tracking), echo gets nothing (no warnings)
+            stub_endpoint = lc_name == "ollama" ? 
+                create_stub_endpoint_zero_pricing(provider_name, model_id) :
+                create_stub_endpoint(provider_name, model_id)
             return provider_info, transformed_model_id, stub_endpoint
         end
         

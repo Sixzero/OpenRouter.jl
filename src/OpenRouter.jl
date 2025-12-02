@@ -17,6 +17,9 @@ include("aigen.jl")
 # https streaming example.
 include("stream/streaming.jl")
 
+# Precompilation workload
+include("precompile.jl")
+
 # Core API functions
 export list_models, list_models_raw, list_providers, list_providers_raw
 export get_model, list_cached_models, search_models

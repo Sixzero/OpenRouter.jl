@@ -66,15 +66,16 @@ end
 Calculate cost for a given endpoint and token usage.
 Unwraps `.pricing`. Warns if cost cannot be determined (e.g. missing pricing).
 """
-function calculate_cost(endpoint::ProviderEndpoint, tokens::Union{Nothing,TokenCounts,Dict})
+function calculate_cost(endpoint::ProviderEndpoint, tokens::Union{Nothing,TokenCounts,Dict}, verbose::Bool=false)
     if endpoint.pricing === nothing
-        @warn "No pricing available on endpoint; cannot calculate cost." endpoint=endpoint tokens=tokens
+        verbose && @warn "No pricing available on endpoint; cannot calculate cost." endpoint=endpoint tokens=tokens
         return nothing
     end
 
     cost = calculate_cost(endpoint.pricing, tokens)
 
     if cost === nothing
+        # warn even in non verbose mode, this cannot go silent
         @warn "Pricing present but resulted in zero/undefined cost; check pricing fields and tokens." endpoint=endpoint tokens=tokens
     end
 

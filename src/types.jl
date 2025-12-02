@@ -37,7 +37,7 @@ end
     name::String
     model_name::String
     context_length::Union{Int, Nothing}
-    pricing::Pricing
+    pricing::Union{Pricing, Nothing}
     provider_name::String
     tag::Union{String, Nothing}
     quantization::Union{String, Nothing}
