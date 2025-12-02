@@ -200,6 +200,39 @@ const PROVIDER_INFO = Dict{String,ProviderInfo}(
         ollama_model_transform,
         ChatCompletionSchema(),
         "Local Ollama instance using OpenAI-compatible /v1/chat/completions API"),
+    # ─── Echo providers for E2E testing ───
+    "echo_chat" => ProviderInfo(
+        "http://localhost:8787/v1",
+        "Bearer",
+        nothing,
+        Dict{String,String}(),
+        nothing,
+        ChatCompletionSchema(),
+        "Echo server for testing ChatCompletionSchema"),
+    "echo_anthropic" => ProviderInfo(
+        "http://localhost:8787",
+        "x-api-key",
+        nothing,
+        Dict("anthropic-version" => "2023-06-01"),
+        nothing,
+        AnthropicSchema(),
+        "Echo server for testing AnthropicSchema"),
+    "echo_gemini" => ProviderInfo(
+        "http://localhost:8787",
+        "x-goog-api-key",
+        nothing,
+        Dict{String,String}(),
+        nothing,
+        GeminiSchema(),
+        "Echo server for testing GeminiSchema"),
+    "echo_responses" => ProviderInfo(
+        "http://localhost:8787",
+        "Bearer",
+        nothing,
+        Dict{String,String}(),
+        nothing,
+        ResponseSchema(),
+        "Echo server for testing ResponseSchema"),
 )
 
 """

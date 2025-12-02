@@ -137,6 +137,15 @@ function aigen(prompt, config::ModelConfig;
 end
 
 """
+    aigen(; prompt, model, kwargs...)
+Kwarg-only version of aigen.
+```
+"""
+function aigen(; prompt, model, kwargs...)
+    aigen(prompt, model; kwargs...)
+end
+
+"""
 Core function that handles both streaming and non-streaming API calls.
 """
 function _aigen_core(prompt, provider_info::ProviderInfo, model_id::AbstractString, provider_endpoint::ProviderEndpoint; 
@@ -208,7 +217,7 @@ function parse_provider_model(provider_model::AbstractString)
     cached_model = get_model(model_id; fetch_endpoints=true)
     if cached_model === nothing
         # Special handling for local providers (e.g. Ollama) that don't have OpenRouter metadata
-        if lowercase(provider_name) == "ollama"
+        if lowercase(provider_name) == "ollama" || startswith(lowercase(provider_name), "echo")
             transformed_model_id = transform_model_name(provider_info, model_id)
             stub_endpoint = create_stub_endpoint(provider_name, model_id)
             return provider_info, transformed_model_id, stub_endpoint
