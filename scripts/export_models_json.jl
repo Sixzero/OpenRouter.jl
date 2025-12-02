@@ -182,7 +182,14 @@ end
 # ---------- Main ----------
 
 function main()
-    out_file = "models_data_openrouter.json"
+    # Priority: CLI arg > env var > default
+    out_file = if length(ARGS) >= 1
+        ARGS[1]
+    elseif haskey(ENV, "OPENROUTER_MODELS_OUTPUT")
+        ENV["OPENROUTER_MODELS_OUTPUT"]
+    else
+        "models_data_openrouter.json"
+    end
 
     data = build_models_data()
 
@@ -192,7 +199,6 @@ function main()
 
     total_models = data["total_models"]
     println("✅ Exported $total_models models to $out_file")
-
 end
 
 main()
