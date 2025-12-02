@@ -110,21 +110,7 @@ function aigen(prompt, provider_model::String;
     # Get raw response and all components
     raw = aigen_raw(prompt, provider_model; schema, api_key, sys_msg, streamcallback, verbose, kwargs...)
     
-    # Extract content and build AIMessage
-    content = extract_content(raw.schema, raw.result)
-    finish_reason = extract_finish_reason(raw.schema, raw.result)
-    tokens = extract_tokens(raw.schema, raw.result)
-    cost = calculate_cost(raw.provider_endpoint, tokens)
-    reasoning = extract_reasoning(raw.schema, raw.result)
-    
-    return AIMessage(
-        content=content,
-        finish_reason=finish_reason,
-        tokens=tokens,
-        elapsed=raw.elapsed,
-        cost=cost,
-        reasoning=reasoning
-    )
+    return AIMessage(raw.schema, raw.result; endpoint=raw.provider_endpoint, elapsed=raw.elapsed)
 end
 
 # ModelConfig overload
@@ -255,4 +241,26 @@ function parse_provider_model(provider_model::AbstractString)
     transformed_model_id = transform_model_name(provider_info, model_id)
     
     return provider_info, transformed_model_id, provider_endpoint
+end
+
+"""
+    AIMessage(schema::AbstractRequestSchema, result::Dict; endpoint=nothing, elapsed=-1.0)
+
+Construct an AIMessage by extracting all fields from raw API result.
+If `endpoint` is provided, cost is calculated from token usage.
+"""
+function AIMessage(schema::AbstractRequestSchema, result::Dict; 
+                   endpoint::Union{Nothing,ProviderEndpoint}=nothing, elapsed::Float64=-1.0)
+    content = something(extract_content(schema, result), "")
+    tokens = extract_tokens(schema, result)
+    cost = endpoint === nothing ? nothing : calculate_cost(endpoint, tokens)
+    return AIMessage(
+        content = content,
+        finish_reason = extract_finish_reason(schema, result),
+        tokens = tokens,
+        elapsed = elapsed,
+        cost = cost,
+        reasoning = extract_reasoning(schema, result),
+        tool_calls = extract_tool_calls(schema, result)
+    )
 end

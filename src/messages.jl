@@ -16,6 +16,7 @@ Base.@kwdef struct AIMessage <: AbstractMessage
     elapsed::Float64 = -1.0
     cost::Union{Nothing, Float64} = nothing
     reasoning::Union{Nothing, String} = nothing  # Store reasoning/thinking content
+    tool_calls::Union{Nothing, Vector{Dict{String, Any}}} = nothing  # Store tool calls
     extras::Union{Nothing, Dict{Symbol, Any}} = nothing
 end
 
@@ -23,6 +24,12 @@ Base.@kwdef struct SystemMessage <: AbstractMessage
     content::AbstractString
     name::Union{Nothing, String} = nothing
     extras::Union{Nothing, Dict{Symbol, Any}} = nothing
+end
+
+Base.@kwdef struct ToolMessage <: AbstractMessage
+    content::AbstractString
+    tool_call_id::String
+    name::Union{Nothing, String} = nothing
 end
 
 """
@@ -95,24 +102,39 @@ end
 function to_openai_messages(msgs::Vector{AbstractMessage})
     out = Any[]
     for m in msgs
+        # Handle ToolMessage separately (different structure)
+        if m isa ToolMessage
+            push!(out, Dict("role" => "tool", "tool_call_id" => m.tool_call_id, "content" => m.content))
+            continue
+        end
+        
         role = m isa UserMessage ? "user" :
                m isa AIMessage   ? "assistant" :
                m isa SystemMessage ? "system" :
                error("Unknown message type $(typeof(m)) for OpenAI schema")
 
+        # Initialize message dict
+        msg_dict = Dict{String, Any}("role" => role)
+        
         # Handle images for UserMessage
         if m isa UserMessage && m.image_data !== nothing && !isempty(m.image_data)
             content = Any[Dict("type" => "text", "text" => m.content)]
             for img in m.image_data
                 push!(content, Dict("type" => "image_url", "image_url" => Dict("url" => img)))
             end
-            msg_dict = Dict("role" => role, "content" => content)
+            msg_dict["content"] = content
         else
-            msg_dict = Dict("role" => role, "content" => m.content)
+            msg_dict["content"] = m.content
         end
 
         if m.name !== nothing
             msg_dict["name"] = m.name
+        end
+        
+        # Handle AIMessage extras (tool_calls, reasoning_content)
+        if m isa AIMessage
+            m.tool_calls !== nothing && (msg_dict["tool_calls"] = m.tool_calls)
+            m.reasoning !== nothing && (msg_dict["reasoning_content"] = m.reasoning)
         end
 
         push!(out, msg_dict)

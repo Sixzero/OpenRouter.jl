@@ -258,8 +258,8 @@ end
 """
 Get the provider info for a given slug, or `nothing` if unknown.
 """
-function get_provider_info(provider_slug::AbstractString)::Union{ProviderInfo,Nothing}
-    provider_slug = resolve_model_alias(provider_slug)
+function get_provider_info(provider_slug_or_alias::AbstractString)::Union{ProviderInfo,Nothing}
+    provider_slug = resolve_model_alias(provider_slug_or_alias)
     return get(PROVIDER_INFO, lowercase(provider_slug), nothing)
 end
 

@@ -99,7 +99,7 @@ Build messages array for AnthropicSchema.
 
 Returns a tuple: (messages, system_content)
 """
-function build_messages(::AnthropicSchema, prompt, sys_msg)
+function build_messages(::AnthropicSchema, prompt, sys_msg; cache::Union{Nothing,Symbol}=nothing)
     normalized = normalize_messages(prompt, sys_msg)
 
     # Extract first SystemMessage content, if any
@@ -112,7 +112,7 @@ function build_messages(::AnthropicSchema, prompt, sys_msg)
     end
 
     # Convert all messages; SystemMessages are ignored by to_anthropic_messages
-    msgs = to_anthropic_messages(normalized)
+    msgs = to_anthropic_messages(normalized; cache)
     return msgs, system_content
 end
 
@@ -123,18 +123,7 @@ function build_payload(::AnthropicSchema, prompt, model_id::AbstractString, sys_
                        stream::Bool = false; max_tokens::Int=1000,
                        cache::Union{Nothing,Symbol}=nothing,
                        kwargs...)
-    # normalize + get system
-    normalized = normalize_messages(prompt, sys_msg)
-    system_content = nothing
-    for m in normalized
-        if m isa SystemMessage
-            system_content = m.content
-            break
-        end
-    end
-
-    # convert messages, applying cache markers if requested
-    messages = to_anthropic_messages(normalized; cache)
+    messages, system_content = build_messages(AnthropicSchema(), prompt, sys_msg; cache)
     
     payload = Dict{String, Any}(
         "model" => model_id,
@@ -320,7 +309,62 @@ Extract reasoning content from API response based on schema.
 Returns nothing if schema doesn't support reasoning or no reasoning found.
 """
 function extract_reasoning(::ChatCompletionSchema, result::Dict)
-    return nothing  # OpenAI doesn't have separate reasoning field
+    # DeepSeek uses reasoning_content in OpenAI-compatible format
+    if haskey(result, "choices") && length(result["choices"]) > 0
+        msg = result["choices"][1]["message"]
+        return get(msg, "reasoning_content", nothing)
+    end
+    return nothing
+end
+
+"""
+Extract tool calls from API response based on schema.
+Returns nothing if no tool calls found.
+"""
+function extract_tool_calls(::ChatCompletionSchema, result::Dict)
+    if haskey(result, "choices") && length(result["choices"]) > 0
+        msg = result["choices"][1]["message"]
+        tc = get(msg, "tool_calls", nothing)
+        return tc === nothing ? nothing : Vector{Dict{String,Any}}(tc)
+    end
+    return nothing
+end
+
+function extract_tool_calls(::AnthropicSchema, result::Dict)
+    if haskey(result, "content")
+        tool_calls = Dict{String,Any}[]
+        for block in result["content"]
+            if get(block, "type", nothing) == "tool_use"
+                push!(tool_calls, Dict{String,Any}(
+                    "id" => block["id"],
+                    "type" => "function",
+                    "function" => Dict("name" => block["name"], "arguments" => JSON3.write(block["input"]))
+                ))
+            end
+        end
+        return isempty(tool_calls) ? nothing : tool_calls
+    end
+    return nothing
+end
+
+function extract_tool_calls(::GeminiSchema, result::Dict)
+    # TODO: Implement Gemini tool call extraction
+    return nothing
+end
+
+function extract_tool_calls(::ResponseSchema, result::Dict)
+    output = get(result, "output", [])
+    tool_calls = Dict{String,Any}[]
+    for item in output
+        if get(item, "type", nothing) == "function_call"
+            push!(tool_calls, Dict{String,Any}(
+                "id" => get(item, "call_id", get(item, "id", nothing)),
+                "type" => "function",
+                "function" => Dict("name" => item["name"], "arguments" => item["arguments"])
+            ))
+        end
+    end
+    return isempty(tool_calls) ? nothing : tool_calls
 end
 
 function extract_reasoning(::AnthropicSchema, result::Dict)
@@ -382,22 +426,42 @@ function extract_tokens(::ChatCompletionSchema, result::Union{Dict, JSON3.Object
     usage = get(result, "usage", nothing)
     usage === nothing && return nothing
     
-    prompt_tokens = get(usage, "prompt_tokens", 0)
     completion_tokens = get(usage, "completion_tokens", 0)
-    total_tokens = get(usage, "total_tokens", prompt_tokens + completion_tokens)
     
-    # Extract cached tokens if available
-    input_cache_read = 0
-    prompt_details = get(usage, "prompt_tokens_details", nothing)
-    if prompt_details !== nothing
-        input_cache_read = get(prompt_details, "cached_tokens", 0)
+    # Check for explicit cache fields (DeepSeek style)
+    cache_hit = get(usage, "prompt_cache_hit_tokens", nothing)
+    cache_miss = get(usage, "prompt_cache_miss_tokens", nothing)
+    
+    if cache_hit !== nothing && cache_miss !== nothing
+        # DeepSeek provides explicit breakdown - use directly
+        prompt_tokens = cache_miss      # non-cached input (cache misses)
+        input_cache_read = cache_hit    # cached input (cache hits)
+    else
+        # Fallback: OpenAI style - API prompt_tokens is total, subtract cached
+        api_prompt_tokens = get(usage, "prompt_tokens", 0)
+        input_cache_read = 0
+        prompt_details = get(usage, "prompt_tokens_details", nothing)
+        if prompt_details !== nothing
+            input_cache_read = get(prompt_details, "cached_tokens", 0)
+        end
+        prompt_tokens = api_prompt_tokens - input_cache_read  # cache misses only
+    end
+    
+    # total = cache_miss + cache_hit + completion
+    total_input = prompt_tokens + input_cache_read
+    calculated_total = total_input + completion_tokens
+    
+    # Validate against reported total
+    reported_total = get(usage, "total_tokens", nothing)
+    if reported_total !== nothing && reported_total != calculated_total
+        @warn "Token count mismatch" reported_total calculated_total prompt_tokens input_cache_read completion_tokens
     end
     
     return TokenCounts(
-        prompt_tokens = prompt_tokens,
+        prompt_tokens = prompt_tokens,       # cache misses
         completion_tokens = completion_tokens,
-        total_tokens = total_tokens,
-        input_cache_read = input_cache_read
+        total_tokens = calculated_total,
+        input_cache_read = input_cache_read  # cache hits
     )
 end
 
@@ -415,19 +479,23 @@ function extract_tokens(schema::AnthropicSchema, response::Union{Dict, JSON3.Obj
     
     isnothing(usage) && return nothing
     
-    input_tokens = get(usage, "input_tokens", 0)
+    api_input_tokens = get(usage, "input_tokens", 0)
     output_tokens = get(usage, "output_tokens", 0)
     
-    # Extract cache-related tokens (Anthropic naming -> TokenCounts naming)
+    # Extract cache-related tokens
     cache_write_tokens = get(usage, "cache_creation_input_tokens", 0)
     cache_read_tokens = get(usage, "cache_read_input_tokens", 0)
     
+    # For Anthropic: input_tokens = tokens AFTER cache breakpoint (already non-cached)
+    # Total input = input_tokens + cache_read + cache_write
+    total_input = api_input_tokens + cache_read_tokens + cache_write_tokens
+    
     return TokenCounts(
-        prompt_tokens = input_tokens,
+        prompt_tokens = api_input_tokens,        # non-cached input (after breakpoint)
         completion_tokens = output_tokens,
-        total_tokens = input_tokens + output_tokens,
+        total_tokens = total_input + output_tokens,
         input_cache_write = cache_write_tokens,
-        input_cache_read = cache_read_tokens
+        input_cache_read = cache_read_tokens     # cache hits
     )
 end
 

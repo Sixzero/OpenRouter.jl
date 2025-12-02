@@ -46,10 +46,11 @@ function calculate_cost(pricing::Pricing, tokens::Union{Nothing,TokenCounts,Dict
 
     total_cost = 0.0
 
-    total_cost += tokens.prompt_tokens * parse_price(pricing.prompt)
-    total_cost += tokens.completion_tokens * parse_price(pricing.completion)
-    total_cost += tokens.input_cache_read * parse_price(pricing.input_cache_read)
+    # Fields are non-overlapping, no subtraction needed
+    total_cost += tokens.prompt_tokens * parse_price(pricing.prompt)           # cache misses at full price
+    total_cost += tokens.input_cache_read * parse_price(pricing.input_cache_read)  # cache hits at cache price
     total_cost += tokens.input_cache_write * parse_price(pricing.input_cache_write)
+    total_cost += tokens.completion_tokens * parse_price(pricing.completion)
     total_cost += tokens.internal_reasoning * parse_price(pricing.internal_reasoning)
     total_cost += tokens.input_audio_cache * parse_price(pricing.input_audio_cache)
 

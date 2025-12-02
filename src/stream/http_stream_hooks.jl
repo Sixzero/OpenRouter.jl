@@ -175,7 +175,6 @@ end
 # Handle token metadata with schema-specific dispatch
 function handle_token_metadata_for_schema(schema::AbstractRequestSchema, cb::HttpStreamHooks,
                                          tokens::TokenCounts, cost::Float64, elapsed::Float64)
-                                         @show tokens
     # Determine if this is user or AI metadata based on token types
     if tokens.prompt_tokens > 0 && (tokens.completion_tokens == 0 || isnothing(tokens.completion_tokens))
         msg = cb.on_meta_usr(tokens, cost, elapsed)

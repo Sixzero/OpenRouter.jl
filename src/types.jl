@@ -90,27 +90,26 @@ This module provides standardized token counting and cost calculation across all
 """
     TokenCounts
 
-Universal token counting struct that standardizes token usage across all providers and schemas.
+Universal token counting struct. Fields are NON-OVERLAPPING for correct cost calculation.
 
-# Fields
-- `prompt_tokens::Int`: Number of input/prompt tokens (excluding cached)
-- `completion_tokens::Int`: Number of output/completion tokens  
-- `total_tokens::Int`: Total tokens used (should equal sum of all token types)
-- `input_cache_read::Int`: Number of tokens read from cache
-- `input_cache_write::Int`: Number of tokens written to cache  
-- `internal_reasoning::Int`: Number of reasoning/thinking tokens (e.g., Gemini thoughts, Anthropic thinking)
-- `input_audio_cache::Int`: Number of audio tokens cached
+# Fields (non-overlapping)
+- `prompt_tokens::Int`: Cache misses - input tokens NOT served from cache (charged at full price)
+- `input_cache_read::Int`: Cache hits - input tokens served from cache (charged at cache price)
+- `completion_tokens::Int`: Output tokens
+- `total_tokens::Int`: Sum of all input + output tokens
+- `input_cache_write::Int`: Tokens written to cache (Anthropic)
+- `internal_reasoning::Int`: Reasoning/thinking tokens (Gemini, DeepSeek R1)
+- `input_audio_cache::Int`: Audio tokens cached
 
-Note: Different providers use different naming conventions:
-- OpenAI: prompt_tokens, completion_tokens, cached_tokens (in prompt_tokens_details)
-- Anthropic: input_tokens, output_tokens, cache_creation_input_tokens, cache_read_input_tokens
-- Gemini: promptTokenCount, candidatesTokenCount, thoughtsTokenCount
+# Cost calculation
+Total input = prompt_tokens + input_cache_read (no double counting)
+Cost = prompt_tokens × full_price + input_cache_read × cache_price
 """
 Base.@kwdef struct TokenCounts
-    prompt_tokens::Int = 0
+    prompt_tokens::Int = 0          # cache misses (non-cached input)
     completion_tokens::Int = 0
     total_tokens::Int = 0
-    input_cache_read::Int = 0
+    input_cache_read::Int = 0       # cache hits
     input_cache_write::Int = 0
     internal_reasoning::Int = 0
     input_audio_cache::Int = 0
