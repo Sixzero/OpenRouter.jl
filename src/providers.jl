@@ -151,7 +151,7 @@ const PROVIDER_INFO = Dict{String,ProviderInfo}(
     "novita" => ProviderInfo(
         "https://api.novita.ai/v3/openai",
         "Bearer",
-        nothing,
+        "NOVITA_API_KEY",
         Dict{String,String}(),
         nothing,
         ChatCompletionSchema(),

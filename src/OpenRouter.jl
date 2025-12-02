@@ -17,6 +17,9 @@ include("aigen.jl")
 # https streaming example.
 include("stream/streaming.jl")
 
+# Echo server for testing/precompilation
+include("echo_server.jl")
+
 # Precompilation workload
 include("precompile.jl")
 
