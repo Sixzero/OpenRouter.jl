@@ -352,21 +352,6 @@ function extract_tool_calls(::GeminiSchema, result::Dict)
     return nothing
 end
 
-function extract_tool_calls(::ResponseSchema, result::Dict)
-    output = get(result, "output", [])
-    tool_calls = Dict{String,Any}[]
-    for item in output
-        if get(item, "type", nothing) == "function_call"
-            push!(tool_calls, Dict{String,Any}(
-                "id" => get(item, "call_id", get(item, "id", nothing)),
-                "type" => "function",
-                "function" => Dict("name" => item["name"], "arguments" => item["arguments"])
-            ))
-        end
-    end
-    return isempty(tool_calls) ? nothing : tool_calls
-end
-
 function extract_reasoning(::AnthropicSchema, result::Dict)
     if haskey(result, "content") && length(result["content"]) > 0
         for content_block in result["content"]
