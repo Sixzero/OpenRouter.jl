@@ -14,6 +14,16 @@ function acc_tokens(schema::ChatCompletionSchema, accumulator::TokenCounts, new_
 end
 
 """
+Extract ttft_ms from sla_metrics (DeepSeek/OpenRouter style).
+"""
+function extract_ttft_ms(schema::ChatCompletionSchema, chunk::AbstractStreamChunk)
+    isnothing(chunk.json) && return nothing
+    sla_metrics = get(chunk.json, :sla_metrics, nothing)
+    isnothing(sla_metrics) && return nothing
+    return get(sla_metrics, :ttft_ms, nothing)
+end
+
+"""
     is_done(schema::ChatCompletionSchema, chunk::AbstractStreamChunk; kwargs...)
 
 Check if streaming is done for ChatCompletion format.

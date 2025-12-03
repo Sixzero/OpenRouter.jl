@@ -152,6 +152,9 @@ end
 # Default: no reasoning extraction for other schemas
 extract_reasoning_from_chunk(schema::AbstractRequestSchema, chunk::AbstractStreamChunk) = nothing
 
+# Default: no ttft_ms extraction
+extract_ttft_ms(schema::AbstractRequestSchema, chunk::AbstractStreamChunk) = nothing
+
 # Extract stop sequence
 function extract_stop_sequence_from_chunk(schema::AbstractRequestSchema, chunk::StreamChunk)
     isnothing(chunk.json) && return nothing
@@ -216,10 +219,9 @@ function callback(cb::HttpStreamHooks, chunk::StreamChunk; kwargs...)
         isa(msg, AbstractString) && println(cb.out, msg)
     end
 
-    # Extract ttft_ms from sla_metrics if available (DeepSeek style)
+    # Extract ttft_ms if available
     if isnothing(cb.run_info.ttft_ms)
-        sla_metrics = get(chunk.json, :sla_metrics, nothing)
-        !isnothing(sla_metrics) && (cb.run_info.ttft_ms = get(sla_metrics, :ttft_ms, nothing))
+        cb.run_info.ttft_ms = extract_ttft_ms(cb.schema, chunk)
     end
 
     # Extract model info if needed
