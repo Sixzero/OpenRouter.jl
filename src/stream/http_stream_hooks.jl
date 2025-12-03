@@ -208,7 +208,7 @@ function callback(cb::HttpStreamHooks, chunk::StreamChunk; kwargs...)
     end
 
     # Handle message start via schema-specific is_start
-    if is_start(cb.schema, chunk; kwargs...)
+    if isnothing(cb.run_info.inference_start) && is_start(cb.schema, chunk; kwargs...)
         cb.run_info.inference_start = time()
         msg = cb.on_start()
         isa(msg, AbstractString) && println(cb.out, msg)
