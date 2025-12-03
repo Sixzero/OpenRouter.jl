@@ -1,6 +1,19 @@
 # Custom methods for ChatCompletion streaming (OpenAI-compatible)
 
 """
+Accumulate tokens for ChatCompletion schema.
+Detects cumulative counts (DeepSeek style) vs delta counts and handles accordingly.
+"""
+function acc_tokens(schema::ChatCompletionSchema, accumulator::TokenCounts, new_tokens::TokenCounts)
+    # Detect cumulative counts: if new completion_tokens >= old, it's cumulative (replace)
+    if new_tokens.completion_tokens >= accumulator.completion_tokens
+        return new_tokens
+    end
+    # Otherwise delta-based (add)
+    return accumulator + new_tokens
+end
+
+"""
     is_done(schema::ChatCompletionSchema, chunk::AbstractStreamChunk; kwargs...)
 
 Check if streaming is done for ChatCompletion format.
@@ -78,10 +91,9 @@ function build_response_body(schema::ChatCompletionSchema, cb::AbstractLLMStream
             response = chunk.json |> copy
         end
         
-        if isnothing(usage)
-            usage_values = get(chunk.json, :usage, nothing)
-            !isnothing(usage_values) && (usage = usage_values |> copy)
-        end
+        # Always take latest usage (handles cumulative providers like DeepSeek)
+        usage_values = get(chunk.json, :usage, nothing)
+        !isnothing(usage_values) && (usage = usage_values)
         
         for choice in chunk.json.choices
             index = get(choice, :index, nothing)
