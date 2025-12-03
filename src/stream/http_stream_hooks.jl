@@ -81,6 +81,7 @@ A stream callback that combines token counting with customizable hooks for vario
 
     # Internal state
     in_reasoning_mode::Bool = false
+    usr_meta_triggered::Bool = false
 
     # Provider endpoint for cost calculation
     provider_endpoint::Union{ProviderEndpoint, Nothing} = nothing
@@ -177,17 +178,9 @@ function extract_stop_sequence_from_chunk(schema::AbstractRequestSchema, chunk::
     return nothing
 end
 
-# Handle token metadata with schema-specific dispatch
-function handle_token_metadata_for_schema(schema::AbstractRequestSchema, cb::HttpStreamHooks,
-                                         tokens::TokenCounts, cost::Float64, elapsed::Float64)
-    # Determine if this is user or AI metadata based on token types
-    if tokens.prompt_tokens > 0 && (tokens.completion_tokens == 0 || isnothing(tokens.completion_tokens))
-        msg = cb.on_meta_usr(tokens, cost, elapsed)
-    else
-        msg = cb.on_meta_ai(tokens, cost, elapsed)
-    end
-    msg
-end
+# Check if this is user metadata (prompt-only, no completion yet)
+is_usr_meta(schema::AbstractRequestSchema, tokens::TokenCounts) = 
+    tokens.prompt_tokens > 0 && (tokens.completion_tokens == 0 || isnothing(tokens.completion_tokens))
 
 """
 Accumulate tokens according to schema-specific logic.
@@ -252,23 +245,19 @@ function callback(cb::HttpStreamHooks, chunk::StreamChunk; kwargs...)
         cb.on_stop_sequence(stop_seq)
     end
 
-    # Handle token metadata with schema-specific dispatch
+    # Accumulate token metadata
     if (tokens = extract_tokens(cb.schema, chunk.json)) !== nothing
-        # Use schema-specific accumulation logic
         cb.acc_tokens = acc_tokens(cb.schema, cb.acc_tokens, tokens)
-
-        # Use existing calculate_cost function with provider endpoint
-        cost = 0.0
-        if !isnothing(cb.provider_endpoint)
-            calculated_cost = calculate_cost(cb.provider_endpoint, cb.acc_tokens)
-            cost = calculated_cost !== nothing ? calculated_cost : 0.0
-        end
-
         cb.run_info.last_message_time = time()
-        elapsed = get_total_elapsed(cb.run_info)
 
-        token_msg = handle_token_metadata_for_schema(cb.schema, cb, cb.acc_tokens, cost, elapsed !== nothing ? elapsed : 0.0)
-        isa(token_msg, AbstractString) && println(cb.out, token_msg)
+        # Trigger on_meta_usr once on first user metadata
+        if !cb.usr_meta_triggered && is_usr_meta(cb.schema, cb.acc_tokens)
+            cb.usr_meta_triggered = true
+            cost = !isnothing(cb.provider_endpoint) ? something(calculate_cost(cb.provider_endpoint, cb.acc_tokens), 0.0) : 0.0
+            elapsed = get_total_elapsed(cb.run_info)
+            msg = cb.on_meta_usr(cb.acc_tokens, cost, elapsed !== nothing ? elapsed : 0.0)
+            isa(msg, AbstractString) && println(cb.out, msg)
+        end
     end
 
     # Handle completion - use schema's is_done logic
@@ -278,6 +267,12 @@ function callback(cb::HttpStreamHooks, chunk::StreamChunk; kwargs...)
             print(cb.out, "$(RESET_COLOR)")
             cb.in_reasoning_mode = false
         end
+
+        # Trigger on_meta_ai with final token counts
+        cost = !isnothing(cb.provider_endpoint) ? something(calculate_cost(cb.provider_endpoint, cb.acc_tokens), 0.0) : 0.0
+        elapsed = get_total_elapsed(cb.run_info)
+        msg = cb.on_meta_ai(cb.acc_tokens, cost, elapsed !== nothing ? elapsed : 0.0)
+        isa(msg, AbstractString) && println(cb.out, msg)
 
         msg = cb.on_done()
         isa(msg, AbstractString) && println(cb.out, msg)

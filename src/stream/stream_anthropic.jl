@@ -57,17 +57,10 @@ function acc_tokens(schema::AnthropicSchema, accumulator::TokenCounts, new_token
     # Anthropic sends cumulative counts, so replace rather than add
     return new_tokens
 end
-# Handle token metadata with schema-specific dispatch
-function handle_token_metadata_for_schema(schema::AnthropicSchema, cb::HttpStreamHooks,
-                                         tokens::TokenCounts, cost::Float64, elapsed::Float64)
-    # Determine if this is user or AI metadata based on token types
-    if tokens.prompt_tokens > 0 && tokens.completion_tokens <= 3
-        msg = cb.on_meta_usr(tokens, cost, elapsed)
-    else
-        msg = cb.on_meta_ai(tokens, cost, elapsed)
-    end
-    msg
-end
+
+# Anthropic sends usage early with low completion_tokens (<=3)
+is_usr_meta(schema::AnthropicSchema, tokens::TokenCounts) = 
+    tokens.prompt_tokens > 0 && tokens.completion_tokens <= 3
 
 """
     build_response_body(schema::AnthropicSchema, cb::AbstractLLMStream; verbose::Bool = false, kwargs...)
