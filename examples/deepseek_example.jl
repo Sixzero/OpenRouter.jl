@@ -107,3 +107,27 @@ end
 # Example: Tool calling with thinking mode
 messages = AbstractMessage[UserMessage(content="How's the weather in Hangzhou Tomorrow??")]
 run_turn(messages)
+#%%
+using OpenRouter
+
+task_short = "Give me an optimal implementation of is_prime in 3 lines max don't talk unnecessary."
+
+task_long = "Give me an optimal implementation of is_prime in 50 lines max and then think about it a lot, and rewrite it based on your thoughts"
+# resp = aigen(task_short, "gpt5")
+the_printer(tokens, cost, elapsed) = begin
+    elapsed_str = elapsed !== nothing ? " ($(round(elapsed, digits=2))s)" : ""
+    return "\n$tokens Cost: \$$(round(cost, digits=6))$elapsed_str"
+end
+# Custom hooks example with on_done printing
+callback = HttpStreamHooks(
+on_done = () -> "\n✓ Generation complete!",  # Returns string to be printed
+on_start = () -> "🚀 Starting generation...",
+on_meta_usr = the_printer,
+on_meta_ai = the_printer,
+content_formatter = text -> uppercase(text)  # Make all content uppercase
+)
+resp = aigen(task_short, "novita:deepseek/deepseek-v3.2", streamcallback=callback)
+# resp = aigen("Give me an optimal implementation of is_prime in >100 lines and then think about it a lot, and rewrite it based on your thoughts", "novita:deepseek/deepseek-v3.2")
+@show resp.tokens
+@show resp.cost
+;
