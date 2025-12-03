@@ -80,6 +80,21 @@ Extract content from ChatCompletion chunk.
 end
 
 """
+    extract_reasoning_from_chunk(schema::ChatCompletionSchema, chunk::AbstractStreamChunk)
+
+Extract reasoning_content from ChatCompletion chunk (DeepSeek style).
+"""
+@inline function extract_reasoning_from_chunk(schema::ChatCompletionSchema, chunk::AbstractStreamChunk)
+    if !isnothing(chunk.json)
+        choices = get(chunk.json, :choices, [])
+        first_choice = get(choices, 1, Dict())
+        delta = get(first_choice, :delta, Dict())
+        return get(delta, :reasoning_content, nothing)
+    end
+    return nothing
+end
+
+"""
     build_response_body(schema::ChatCompletionSchema, cb::AbstractLLMStream; verbose::Bool = false, kwargs...)
 
 Build response body from chunks to mimic standard ChatCompletion API response.
@@ -125,6 +140,10 @@ function build_response_body(schema::ChatCompletionSchema, cb::AbstractLLMStream
             
             content = get(choice_delta, :content, nothing)
             !isnothing(content) && (message_dict[:content] *= content)
+            
+            # Accumulate reasoning_content (DeepSeek style)
+            reasoning = get(choice_delta, :reasoning_content, nothing)
+            !isnothing(reasoning) && (message_dict[:reasoning_content] = get(message_dict, :reasoning_content, "") * reasoning)
             
             index_dict[:message] = message_dict
         end

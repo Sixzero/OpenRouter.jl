@@ -82,6 +82,8 @@ A stream callback that combines token counting with customizable hooks for vario
     # Internal state
     in_reasoning_mode::Bool = false
     usr_meta_triggered::Bool = false
+    ai_meta_triggered::Bool = false
+    is_done_flag::Bool = false
 
     # Provider endpoint for cost calculation
     provider_endpoint::Union{ProviderEndpoint, Nothing} = nothing
@@ -152,30 +154,27 @@ end
 
 # Default: no reasoning extraction for other schemas
 extract_reasoning_from_chunk(schema::AbstractRequestSchema, chunk::AbstractStreamChunk) = nothing
-
 # Default: no ttft_ms extraction
 extract_ttft_ms(schema::AbstractRequestSchema, chunk::AbstractStreamChunk) = nothing
 
-# Extract stop sequence
-function extract_stop_sequence_from_chunk(schema::AbstractRequestSchema, chunk::StreamChunk)
+# Extract stop sequence - dispatch on schema
+extract_stop_sequence_from_chunk(::AbstractRequestSchema, chunk::AbstractStreamChunk) = nothing
+
+function extract_stop_sequence_from_chunk(::ChatCompletionSchema, chunk::AbstractStreamChunk)
     isnothing(chunk.json) && return nothing
+    choices = get(chunk.json, :choices, [])
+    !isempty(choices) ? get(choices[1], :finish_reason, nothing) : nothing
+end
 
-    # Schema-specific stop sequence extraction
-    if schema isa ChatCompletionSchema
-        choices = get(chunk.json, :choices, [])
-        if !isempty(choices)
-            return get(choices[1], :finish_reason, nothing)
-        end
-    elseif schema isa AnthropicSchema
-        return get(chunk.json, :stop_reason, nothing)
-    elseif schema isa GeminiSchema
-        candidates = get(chunk.json, :candidates, [])
-        if !isempty(candidates)
-            return get(candidates[1], :finishReason, nothing)
-        end
-    end
+function extract_stop_sequence_from_chunk(::AnthropicSchema, chunk::AbstractStreamChunk)
+    isnothing(chunk.json) && return nothing
+    get(chunk.json, :stop_reason, nothing)
+end
 
-    return nothing
+function extract_stop_sequence_from_chunk(::GeminiSchema, chunk::AbstractStreamChunk)
+    isnothing(chunk.json) && return nothing
+    candidates = get(chunk.json, :candidates, [])
+    !isempty(candidates) ? get(candidates[1], :finishReason, nothing) : nothing
 end
 
 # Check if this is user metadata (prompt-only, no completion yet)
@@ -260,15 +259,19 @@ function callback(cb::HttpStreamHooks, chunk::StreamChunk; kwargs...)
         end
     end
 
-    # Handle completion - use schema's is_done logic
-    if is_done(cb.schema, chunk; kwargs...)
-        # Reset color if in reasoning mode
+    # Mark stream as done
+    is_done(cb.schema, chunk; kwargs...) && (cb.is_done_flag = true)
+
+    # Trigger on_meta_ai once after stream is done
+    if cb.is_done_flag && !cb.ai_meta_triggered
+        cb.ai_meta_triggered = true
+        
+        # Reset color if still in reasoning mode
         if cb.in_reasoning_mode
             print(cb.out, "$(RESET_COLOR)")
             cb.in_reasoning_mode = false
         end
-
-        # Trigger on_meta_ai with final token counts
+        
         cost = !isnothing(cb.provider_endpoint) ? something(calculate_cost(cb.provider_endpoint, cb.acc_tokens), 0.0) : 0.0
         elapsed = get_total_elapsed(cb.run_info)
         msg = cb.on_meta_ai(cb.acc_tokens, cost, elapsed !== nothing ? elapsed : 0.0)

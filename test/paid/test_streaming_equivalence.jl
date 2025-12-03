@@ -8,6 +8,7 @@ using Test
         "google-ai-studio:google/gemini-2.5-flash",
         "openai:openai/gpt-5.1-mini",
         "cerebras:meta-llama/llama-3.1-8b-instruct",
+        "atlascloud:deepseek/deepseek-v3.2-speciale",
     ]
     
     prompt = "Count from 1 to 3 in one line"
