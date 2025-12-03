@@ -1,5 +1,5 @@
 """
-    RunInfo(; creation_time=time(), inference_start=nothing, last_message_time=nothing, stop_sequence=nothing)
+    RunInfo(; creation_time=time(), inference_start=nothing, last_message_time=nothing, stop_sequence=nothing, ttft_ms=nothing)
 
 Tracks run statistics and metadata during the streaming process.
 
@@ -11,6 +11,7 @@ Tracks run statistics and metadata during the streaming process.
   - A specific stop sequence provided in the chunk's delta.stop_sequence
   - "stop" if finish_reason is "stop"
   For Anthropic this is the stop_sequence provided in the chunk.
+- `ttft_ms`: Time to first token in milliseconds (from provider's sla_metrics if available)
 
 # Timing Methods
 - `get_total_elapsed(info)`: Get total elapsed time since callback creation
@@ -21,6 +22,7 @@ Tracks run statistics and metadata during the streaming process.
     inference_start::Union{Float64,Nothing} = nothing
     last_message_time::Union{Float64,Nothing} = nothing
     stop_sequence::Union{String,Nothing} = nothing
+    ttft_ms::Union{Int,Nothing} = nothing
 end
 
 @kwdef mutable struct RunInfoMeta
@@ -212,6 +214,12 @@ function callback(cb::HttpStreamHooks, chunk::StreamChunk; kwargs...)
         cb.run_info.inference_start = time()
         msg = cb.on_start()
         isa(msg, AbstractString) && println(cb.out, msg)
+    end
+
+    # Extract ttft_ms from sla_metrics if available (DeepSeek style)
+    if isnothing(cb.run_info.ttft_ms)
+        sla_metrics = get(chunk.json, :sla_metrics, nothing)
+        !isnothing(sla_metrics) && (cb.run_info.ttft_ms = get(sla_metrics, :ttft_ms, nothing))
     end
 
     # Extract model info if needed
