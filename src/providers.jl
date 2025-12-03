@@ -180,6 +180,46 @@ const PROVIDER_INFO = Dict{String,ProviderInfo}(
         nothing,
         ChatCompletionSchema(),
         "OpenAI-compatible API"),
+    "z-ai" => ProviderInfo(
+        "https://api.z.ai/api/paas/v4",
+        "Bearer",
+        "ZAI_API_KEY",
+        Dict{String,String}(),
+        nothing,
+        ChatCompletionSchema(),
+        "OpenAI-compatible API"),
+    "featherless" => ProviderInfo(
+        "https://api.featherless.ai/v1",
+        "Bearer",
+        "FEATHERLESS_API_KEY",
+        Dict{String,String}(),
+        nothing,
+        ChatCompletionSchema(),
+        "OpenAI-compatible API"),
+    "clarifai" => ProviderInfo(
+        "https://api.clarifai.com/v2",
+        "Bearer",
+        "CLARIFAI_API_KEY",
+        Dict{String,String}(),
+        nothing,
+        ChatCompletionSchema(),
+        "Clarifai REST API"),
+    "atlascloud" => ProviderInfo(
+        "https://api.atlascloud.ai/v1",
+        "Bearer",
+        "ATLASCLOUD_API_KEY",
+        Dict{String,String}(),
+        atlascloud_model_transform,
+        ChatCompletionSchema(),
+        "OpenAI-compatible API"),
+    "chutes" => ProviderInfo(
+        "https://api.chutes.ai/v1",
+        "Bearer",
+        "CHUTES_API_KEY",
+        Dict{String,String}(),
+        nothing,
+        ChatCompletionSchema(),
+        "OpenAI-compatible API"),
 
     # Azure is special; host is resource-dependent
     "azure" => ProviderInfo(

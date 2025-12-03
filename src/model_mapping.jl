@@ -200,6 +200,20 @@ function cohere_model_transform(model_id::AbstractString)::AbstractString
 end
 
 """
+    atlascloud_model_transform(model_id::String)::String
+
+Transform model IDs for AtlasCloud. Maps DeepSeek models to the
+provider's `deepseek-ai/...` namespace.
+"""
+function atlascloud_model_transform(model_id::AbstractString)::AbstractString
+    if startswith(model_id, "deepseek/")
+        suffix = model_id[(length("deepseek/") + 1):end]
+        return "deepseek-ai/" * suffix
+    end
+    return model_id
+end
+
+"""
     strip_provider_prefix(model_id::AbstractString, provider::AbstractString)::AbstractString
 
 Remove provider prefix from model ID if present.
