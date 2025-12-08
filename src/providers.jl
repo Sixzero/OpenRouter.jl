@@ -157,11 +157,12 @@ const PROVIDER_INFO = Dict{String,ProviderInfo}(
         ChatCompletionSchema(),
         "OpenAI-compatible API"),
     "siliconflow" => ProviderInfo(
-        "https://api.siliconflow.cn/v1",
+        # SiliconFlow documented base URL uses .com; .cn returns 401 for valid keys
+        "https://api.siliconflow.com/v1",
         "Bearer",
         "SILICONFLOW_API_KEY",
         Dict{String,String}(),
-        nothing,
+        siliconflow_model_transform,
         ChatCompletionSchema(),
         "OpenAI-compatible API"),
     "nvidia" => ProviderInfo(
