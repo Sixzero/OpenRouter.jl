@@ -120,14 +120,38 @@ the_printer(tokens, cost, elapsed) = begin
 end
 # Custom hooks example with on_done printing
 callback = HttpStreamHooks(
-on_done = () -> "\n✓ Generation complete!",  # Returns string to be printed
-on_start = () -> "🚀 Starting generation...",
-on_meta_usr = the_printer,
-on_meta_ai = the_printer,
-content_formatter = text -> uppercase(text)  # Make all content uppercase
+    on_done = () -> "\n✓ Generation complete!",  # Returns string to be printed
+    on_start = () -> "🚀 Starting generation...",
+    on_meta_usr = the_printer,
+    on_meta_ai = the_printer,
+    content_formatter = text -> uppercase(text)  # Make all content uppercase
 )
-resp = aigen(task_short, "novita:deepseek/deepseek-v3.2", streamcallback=callback)
+# resp = aigen(task_short, "novita:deepseek/deepseek-v3.2", streamcallback=callback)
+# resp = aigen(task_short, "siliconflow:deepseek/deepseek-v3.2", streamcallback=callback)
+resp = aigen(task_short, "deepseek:deepseek/deepseek-v3.2", streamcallback=callback)
+# resp = aigen(task_short, "novita:deepseek/deepseek-v3.2", streamcallback=callback)
 # resp = aigen("Give me an optimal implementation of is_prime in >100 lines and then think about it a lot, and rewrite it based on your thoughts", "novita:deepseek/deepseek-v3.2")
 @show resp.tokens
 @show resp.cost
 ;
+#%%
+
+callback = HttpStreamHooks(
+    on_done = () -> "\n✓ Generation complete!",  # Returns string to be printed
+    on_start = () -> "🚀 Starting generation...",
+    on_meta_usr = the_printer,
+    on_meta_ai = the_printer,
+    content_formatter = text -> uppercase(text)  # Make all content uppercase
+)
+supershort = "Just count from 1 to 3 in one line!"
+
+# AtlasCloud DeepSeek variants
+resp_atlas_speciale = aigen(
+    supershort,
+    "atlascloud:deepseek/deepseek-v3.2-speciale",
+    streamcallback=callback,
+)
+# println(resp_atlas_speciale.content)
+@show resp_atlas_speciale.tokens
+@show resp_atlas_speciale.cost
+#%%

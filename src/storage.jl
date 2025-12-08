@@ -246,6 +246,7 @@ function update_db(;
     full_refresh::Bool = false,
     fetch_endpoints::Bool = true
 )::ModelCache
+    @info "Downloading new models. Updating db..." full_refresh fetch_endpoints
     cache = get_global_cache()
     now_time = now()
 
@@ -298,7 +299,7 @@ function get_model(
         return cached
     end
 
-    cache = update_db(api_key = api_key, fetch_endpoints = fetch_endpoints)
+    cache = update_db(api_key = api_key, fetch_endpoints = fetch_endpoints, full_refresh=false)
     return get(cache.models, model_id, nothing)
 end
 

@@ -132,8 +132,15 @@ end
 
 Transform model IDs for DeepSeek. Currently returns unchanged.
 """
+const DEEPSEEK_MODEL_MAP = Dict{String,String}(
+    # OpenRouter -> native DeepSeek API
+    "deepseek/deepseek-v3.2" => "deepseek-chat",
+    "deepseek/deepseek-v3.2-speciale" => "deepseek-reasoner",
+)
+
 function deepseek_model_transform(model_id::AbstractString)::AbstractString
-    return model_id
+    key = lowercase(model_id)
+    return get(DEEPSEEK_MODEL_MAP, key, model_id)
 end
 
 """
@@ -211,6 +218,49 @@ function atlascloud_model_transform(model_id::AbstractString)::AbstractString
         return "deepseek-ai/" * suffix
     end
     return model_id
+end
+
+"""
+    siliconflow_model_transform(model_id::String)::String
+
+Map OpenRouter model IDs to SiliconFlow's native IDs (case and prefix
+differences). Extend this map as SiliconFlow adds or renames models.
+"""
+const SILICONFLOW_MODEL_MAP = Dict{String,String}(
+    "qwen/qwen3-vl-235b-a22b-instruct" => "Qwen/Qwen3-VL-235B-A22B-Instruct",
+    "qwen/qwen3-vl-235b-a22b-thinking" => "Qwen/Qwen3-VL-235B-A22B-Thinking",
+    "qwen/qwen3-vl-30b-a3b-thinking" => "Qwen/Qwen3-VL-30B-A3B-Thinking",
+    "qwen/qwen3-vl-30b-a3b-instruct" => "Qwen/Qwen3-VL-30B-A3B-Instruct",
+    "qwen/qwen3-32b" => "Qwen/Qwen3-32B",
+    "qwen/qwen3-30b-a3b" => "Qwen/Qwen3-30B-A3B",
+    "qwen/qwen3-30b-a3b-instruct-2507" => "Qwen/Qwen3-30B-A3B-Instruct-2507",
+    "qwen/qwen3-30b-a3b-thinking-2507" => "Qwen/Qwen3-30B-A3B-Thinking-2507",
+    "qwen/qwen3-235b-a22b-2507" => "Qwen/Qwen3-235B-A22B-Instruct-2507",
+    "qwen/qwen3-235b-a22b-thinking-2507" => "Qwen/Qwen3-235B-A22B-Thinking-2507",
+    "qwen/qwen3-next-80b-a3b-instruct" => "Qwen/Qwen3-Next-80B-A3B-Instruct",
+    "qwen/qwq-32b" => "Qwen/QwQ-32B",
+    "qwen/qwen3-coder-30b-a3b-instruct" => "Qwen/Qwen3-Coder-30B-A3B-Instruct",
+
+    "deepseek/deepseek-v3.2" => "deepseek-ai/DeepSeek-V3.2",
+    "deepseek/deepseek-v3.2-exp" => "deepseek-ai/DeepSeek-V3.2-Exp",
+    "deepseek/deepseek-v3.1-terminus" => "deepseek-ai/DeepSeek-V3.1-Terminus",
+    "deepseek/deepseek-chat-v3.1" => "deepseek-ai/DeepSeek-V3.1",
+
+    "moonshotai/kimi-k2-0905" => "moonshotai/Kimi-K2-Instruct-0905",
+    "moonshotai/kimi-k2-thinking" => "moonshotai/Kimi-K2-Thinking",
+    "moonshotai/kimi-dev-72b" => "moonshotai/Kimi-Dev-72B",
+
+    "tencent/hunyuan-a13b-instruct" => "tencent/Hunyuan-A13B-Instruct",
+    "baidu/ernie-4.5-300b-a47b" => "baidu/ERNIE-4.5-300B-A47B",
+    "z-ai/glm-4.5-air" => "z-ai/GLM-4.5-Air",
+    "z-ai/glm-4.6" => "zai-org/GLM-4.6",
+    "meta-llama/llama-3.1-8b-instruct" => "meta-llama/Meta-Llama-3.1-8B-Instruct",
+    "minimax/minimax-m1" => "MiniMaxAI/MiniMax-M1-80k",
+)
+
+function siliconflow_model_transform(model_id::AbstractString)::AbstractString
+    key = lowercase(model_id)
+    return get(SILICONFLOW_MODEL_MAP, key, model_id)
 end
 
 """

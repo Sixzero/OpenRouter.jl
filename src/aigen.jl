@@ -191,12 +191,12 @@ function _aigen_core(prompt, provider_info::ProviderInfo, model_id::AbstractStri
     else
         # Configure stream callback with schema and provider info
         configure_stream_callback!(streamcallback, protocolSchema, provider_info, provider_endpoint)
-        
+
         # Streaming request
         response = streamed_request!(streamcallback, url, headers, JSON3.write(payload))
-        
+
         response.status != 200 && error("API request failed with status $(response.status): $(String(response.body))")
-        
+
         return JSON3.read(response.body, Dict)
     end
 end

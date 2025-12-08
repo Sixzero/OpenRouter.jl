@@ -1,14 +1,16 @@
 using OpenRouter: get_provider_info, transform_model_name
+using OpenRouter: list_models, list_native_models
 
 
 
-println("🤖 Provider Models Comparison")
+println("🤖 Provider Models Comparison for transformation function")
 println("="^50)
 
 # List of providers to test
 providers_to_test = [
     # "cerebras", "groq", "deepseek", "xai", "openai",
-    "anthropic"
+    # "anthropic", "siliconflow", 
+    "deepseek", 
 ]
 
 for provider in providers_to_test
@@ -16,23 +18,13 @@ for provider in providers_to_test
     
     # Get OpenRouter models
     or_models = nothing
-    try
-        or_models = list_models(provider)
-        println("  📡 OpenRouter: $(length(or_models)) models")
-    catch e
-        println("  ❌ OpenRouter failed: $e")
-        continue
-    end
+    or_models = list_models(provider)
+    println("  📡 OpenRouter: $(length(or_models)) models")
     
     # Get native models
     native_models = nothing
-    try
-        native_models = list_native_models(provider)
-        println("  🔗 Native API: $(length(native_models)) models")
-    catch e
-        println("  ❌ Native API failed: $e")
-        continue
-    end
+    native_models = list_native_models(provider)
+    println("  🔗 Native API: $(length(native_models)) models")
     
     
     # Find matched and unmatched models after transformation

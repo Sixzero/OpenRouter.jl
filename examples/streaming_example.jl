@@ -40,7 +40,8 @@ using OpenRouter: HttpStreamCallback
 callback = HttpStreamHooks(; out=stdout)
 # response = aigen("Count to 100 in 1 line", "openai:openai/gpt-5.1-codex-mini")
 # @time response = aigen("Count from 1 to 3 one by one in 1 line", "openai:openai/gpt-5.1-codex-mini";)
-@time response = aigen("Count from 1 to 3 one by one in 1 line", "openai:openai/gpt-5.1-codex-mini"; streamcallback=callback)
+# @time response = aigen("Count from 1 to 3 one by one in 1 line", "openai:openai/gpt-5.1-codex-mini"; streamcallback=callback)
+@time response = aigen("Count from 1 to 3 one by one in 1 line", "openai:openai/gpt-5.1-codex-max"; streamcallback=callback)
 ;
 
 response
