@@ -4,7 +4,7 @@ Provider information for OpenRouter API providers.
 Contains general information about each provider, not request-specific configuration.
 """
 
-struct ProviderInfo
+mutable struct ProviderInfo
     base_url::String
     auth_header_format::String        # "Bearer", "Api-Key", "x-api-key", etc.
     api_key_env_var::Union{String,Nothing}  # Full env var name, e.g. "OPENAI_API_KEY"
@@ -22,8 +22,8 @@ const PROVIDER_INFO = Dict{String,ProviderInfo}(
         "OPENAI_API_KEY",
         Dict{String,String}(),
         openai_model_transform,
-        ChatCompletionSchema(),
-        "Standard OpenAI API"),
+        ResponseSchema(),
+        "OpenAI Responses API (gpt-5+, o-series)"),
     "mistral" => ProviderInfo(
         "https://api.mistral.ai/v1",
         "Bearer",
@@ -446,14 +446,8 @@ end
 
 """
 Get the appropriate schema for a provider info and model.
-For OpenAI, use ResponseSchema for gpt-5 and o-series models.
 """
 function get_provider_schema(provider_info::ProviderInfo, model_id::AbstractString)::AbstractRequestSchema
-    # Special case: OpenAI's gpt-5 and o-series use Response API
-    if provider_info.schema isa ChatCompletionSchema && 
-       (startswith(model_id, "gpt-5") || startswith(model_id, "o1-") || startswith(model_id, "o3-"))
-        return ResponseSchema()
-    end
     return provider_info.schema
 end
 
