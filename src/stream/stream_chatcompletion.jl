@@ -99,7 +99,7 @@ end
 
 Build response body from chunks to mimic standard ChatCompletion API response.
 
-Note: Limited functionality. Does NOT support tool use, refusals, logprobs.
+Note: Limited functionality. Does NOT support refusals, logprobs.
 """
 function build_response_body(schema::ChatCompletionSchema, cb::AbstractLLMStream; verbose::Bool = false, kwargs...)
     isempty(cb.chunks) && return nothing
@@ -144,6 +144,34 @@ function build_response_body(schema::ChatCompletionSchema, cb::AbstractLLMStream
             # Accumulate reasoning_content (DeepSeek style)
             reasoning = get(choice_delta, :reasoning_content, nothing)
             !isnothing(reasoning) && (message_dict[:reasoning_content] = get(message_dict, :reasoning_content, "") * reasoning)
+
+            # Accumulate tool_calls (OpenAI streaming format: choices[].delta.tool_calls)
+            delta_tool_calls = get(choice_delta, :tool_calls, nothing)
+            if !isnothing(delta_tool_calls)
+                # Keep as Dict(index=>call) while accumulating; convert to Vector at end.
+                tool_calls_acc = get(message_dict, :tool_calls, Dict{Int, Dict{Symbol, Any}}())
+                for tc in delta_tool_calls
+                    tc_index = get(tc, :index, 0)
+                    tc_dict = get!(tool_calls_acc, tc_index, Dict{Symbol, Any}())
+
+                    tc_id = get(tc, :id, nothing)
+                    !isnothing(tc_id) && (tc_dict[:id] = tc_id)
+
+                    tc_type = get(tc, :type, nothing)
+                    !isnothing(tc_type) && (tc_dict[:type] = tc_type)
+
+                    tc_func = get(tc, :function, nothing)
+                    if !isnothing(tc_func)
+                        func_dict = get(tc_dict, :function, Dict{Symbol, Any}())
+                        func_name = get(tc_func, :name, nothing)
+                        !isnothing(func_name) && (func_dict[:name] = func_name)
+                        func_args = get(tc_func, :arguments, nothing)
+                        !isnothing(func_args) && (func_dict[:arguments] = get(func_dict, :arguments, "") * func_args)
+                        tc_dict[:function] = func_dict
+                    end
+                end
+                message_dict[:tool_calls] = tool_calls_acc
+            end
             
             index_dict[:message] = message_dict
         end
@@ -151,6 +179,14 @@ function build_response_body(schema::ChatCompletionSchema, cb::AbstractLLMStream
     
     if !isnothing(response)
         choices = [choices_output[index] for index in sort(collect(keys(choices_output)))]
+        # Convert tool_calls accumulator dict to a stable ordered vector
+        for choice in choices
+            msg = get(choice, :message, nothing)
+            isnothing(msg) && continue
+            tc_acc = get(msg, :tool_calls, nothing)
+            tc_acc isa AbstractDict || continue
+            msg[:tool_calls] = [tc_acc[i] for i in sort(collect(keys(tc_acc)))]
+        end
         response[:choices] = choices
         response[:object] = "chat.completion"
         !isnothing(usage) && (response[:usage] = usage)

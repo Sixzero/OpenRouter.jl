@@ -35,12 +35,14 @@ function build_payload(schema::ResponseSchema, prompt, model_id::AbstractString,
     default_reasoning = Dict("summary" => "detailed")
     payload["reasoning"] = isnothing(reasoning) ? default_reasoning : merge(default_reasoning, reasoning)
     
-    # Forward supported parameters
+    # Forward supported parameters (convert tools if present)
     for (k, v) in kwargs
-        if k in (:temperature, :top_p, :max_output_tokens, :tools, :tool_choice, 
+        if k in (:temperature, :top_p, :max_output_tokens, :tool_choice, 
                  :parallel_tool_calls, :metadata, :text, :truncation,
                  :service_tier, :safety_identifier, :prompt_cache_key, :prompt_cache_retention)
             payload[string(k)] = v
+        elseif k == :tools
+            payload["tools"] = convert_tools(ResponseSchema(), v)
         end
     end
     

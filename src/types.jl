@@ -1,5 +1,33 @@
 using JSON3
 
+"""
+    Tool
+
+Schema-agnostic tool definition. Automatically converted to the right format
+based on the API schema (OpenAI vs Anthropic vs Gemini).
+
+# Example
+```julia
+tool = Tool(
+    name = "create_file",
+    description = "Create a file with the given content",
+    parameters = Dict(
+        "type" => "object",
+        "properties" => Dict(
+            "path" => Dict("type" => "string", "description" => "File path"),
+            "content" => Dict("type" => "string", "description" => "File content")
+        ),
+        "required" => ["path", "content"]
+    )
+)
+```
+"""
+Base.@kwdef struct Tool
+    name::String
+    description::String
+    parameters::Dict{String, Any}
+end
+
 Base.@kwdef struct Pricing
     prompt::Union{String, Nothing}
     completion::Union{String, Nothing}
@@ -33,7 +61,7 @@ struct OpenRouterModel
     created::Union{Int, Nothing}
 end
 
-@kwdef struct ProviderEndpoint
+@kwdef mutable struct ProviderEndpoint
     name::String
     model_name::String
     context_length::Union{Int, Nothing}

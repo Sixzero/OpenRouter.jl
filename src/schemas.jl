@@ -45,12 +45,68 @@ function build_payload(::ChatCompletionSchema, prompt, model_id::AbstractString,
     # Add stream parameter only if true
     stream && (payload["stream"] = true)
     
-    # Add any additional kwargs
+    # Add any additional kwargs (convert tools if present)
     for (k, v) in kwargs
-        payload[string(k)] = v
+        if k == :tools
+            v === nothing && continue
+            payload["tools"] = convert_tools(ChatCompletionSchema(), v)
+        else
+            payload[string(k)] = v
+        end
     end
     
     return payload
+end
+
+# ============ Tool Conversion ============
+
+"""
+    convert_tools(schema, tools)
+
+Convert tools to schema-specific format. Supports:
+- `Tool` structs (converted per schema)
+- `Vector{Tool}` (each converted)
+- `Dict`/`Vector{Dict}` (passed through as-is for backward compat)
+"""
+convert_tools(::AbstractRequestSchema, tools::Nothing) = nothing
+convert_tools(::AbstractRequestSchema, tools::Vector{<:Dict}) = tools  # passthrough
+convert_tools(::AbstractRequestSchema, tools::Dict) = Any[tools]       # passthrough (single tool dict)
+
+function convert_tools(schema::AbstractRequestSchema, tools::Vector{Tool})
+    [convert_tool(schema, t) for t in tools]
+end
+
+convert_tools(schema::AbstractRequestSchema, tool::Tool) = [convert_tool(schema, tool)]
+
+# OpenAI/ChatCompletion format: { type: "function", function: { name, description, parameters } }
+function convert_tool(::ChatCompletionSchema, tool::Tool)
+    Dict{String,Any}(
+        "type" => "function",
+        "function" => Dict{String,Any}(
+            "name" => tool.name,
+            "description" => tool.description,
+            "parameters" => tool.parameters
+        )
+    )
+end
+
+# Anthropic format: { name, description, input_schema }
+function convert_tool(::AnthropicSchema, tool::Tool)
+    Dict{String,Any}(
+        "name" => tool.name,
+        "description" => tool.description,
+        "input_schema" => tool.parameters
+    )
+end
+
+# ResponseSchema format: { type: "function", name, description, parameters } (flat, no function wrapper)
+function convert_tool(::ResponseSchema, tool::Tool)
+    Dict{String,Any}(
+        "type" => "function",
+        "name" => tool.name,
+        "description" => tool.description,
+        "parameters" => tool.parameters
+    )
 end
 
 """
@@ -145,10 +201,14 @@ function build_payload(::AnthropicSchema, prompt, model_id::AbstractString, sys_
     # Add stream parameter only if true
     stream && (payload["stream"] = true)
     
-    # Add any additional kwargs
+    # Add any additional kwargs (convert tools if present)
     for (k, v) in kwargs
         v === nothing && continue
-        payload[string(k)] = v
+        if k == :tools
+            payload["tools"] = convert_tools(AnthropicSchema(), v)
+        else
+            payload[string(k)] = v
+        end
     end
     
     return payload
