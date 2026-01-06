@@ -6,6 +6,16 @@ Used by newer models like gpt-5.1 and o-series models.
 """
 struct ResponseSchema <: AbstractRequestSchema end
 
+# ResponseSchema format: { type: "function", name, description, parameters } (flat, no function wrapper)
+function convert_tool(::ResponseSchema, tool::Tool)
+    Dict{String,Any}(
+        "type" => "function",
+        "name" => tool.name,
+        "description" => tool.description,
+        "parameters" => tool.parameters
+    )
+end
+
 # Build URL for Responses API
 function build_url(schema::ResponseSchema, base_url::String, model_id::AbstractString, stream::Bool)
     return "$base_url/responses"
@@ -164,3 +174,42 @@ function extract_tool_calls(::ResponseSchema, result::Dict)
     end
     return isempty(tool_calls) ? nothing : tool_calls
 end
+
+"""
+Extract generated images from Response API output.
+Returns Vector{String} of base64 data URLs or nothing if no images.
+"""
+function extract_images(::ResponseSchema, response::Dict)
+    output = get(response, "output", [])
+    images = String[]
+
+    for item in output
+        item_type = get(item, "type", nothing)
+
+        # Handle image_generation_call type (direct image output)
+        if item_type == "image_generation_call"
+            result = get(item, "result", nothing)
+            if result !== nothing
+                # Result is base64 encoded image data
+                push!(images, "data:image/png;base64,$result")
+            end
+        # Handle message type with output_image content
+        elseif item_type == "message"
+            content_array = get(item, "content", [])
+            for content_item in content_array
+                if get(content_item, "type", nothing) == "output_image"
+                    image_url = get(content_item, "image_url", nothing)
+                    if image_url !== nothing
+                        url = get(image_url, "url", nothing)
+                        !isnothing(url) && push!(images, url)
+                    end
+                end
+            end
+        end
+    end
+
+    return isempty(images) ? nothing : images
+end
+
+# Default for other schemas - no image extraction
+extract_images(::AbstractRequestSchema, response::Dict) = nothing
