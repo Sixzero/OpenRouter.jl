@@ -35,8 +35,6 @@ function openai_model_transform(model_id::AbstractString)::AbstractString
     base_id == "gpt-4o:extended" && return "gpt-4o"
     base_id == "codex-mini" && return "codex-mini-latest"
     base_id == "o4-mini-high" && return "o4-mini"
-    base_id == "gpt-5-image" && return "gpt-image-1"
-    base_id == "gpt-5-image-mini" && return "gpt-image-1-mini"
     base_id == "gpt-5-chat" && return "gpt-5-chat-latest"
     base_id == "gpt-5.1-chat" && return "gpt-5.1-chat-latest"
     base_id == "o3-mini-high" && return "o3-mini"
