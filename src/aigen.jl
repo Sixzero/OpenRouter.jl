@@ -99,14 +99,14 @@ callback = HttpStreamCallback(; out=stdout)
 response = aigen("Count to 10", "anthropic:anthropic/claude-haiku-4.5"; streamcallback=callback)
 ```
 """
-function aigen(prompt, provider_model::String; 
+function aigen(prompt, provider_model::String;
                schema::Union{AbstractRequestSchema, Nothing} = nothing,
                api_key::Union{String, Nothing} = nothing,
                sys_msg = nothing,
                streamcallback::Union{Nothing, AbstractLLMStream} = nothing,
                verbose=nothing,
                kwargs...)
-    
+
     # Get raw response and all components
     raw = aigen_raw(prompt, provider_model; schema, api_key, sys_msg, streamcallback, verbose, kwargs...)
     
@@ -250,6 +250,12 @@ function parse_provider_model(provider_model::AbstractString)
         throw(ArgumentError("Provider $provider_name does not host model $model_id. Available providers: $(join([ep.provider_name for ep in cached_model.endpoints.endpoints], ", "))"))
     end
     
+    # Handle endpoint override (tag contains ">original>override_provider")
+    if contains(provider_endpoint.tag, ">")
+        override_provider = split(provider_endpoint.tag, ">")[end]
+        provider_info = get_provider_info(override_provider)
+    end
+
     # Transform model name according to provider rules (this now handles prefix removal internally)
     transformed_model_id = transform_model_name(provider_info, model_id)
     
@@ -262,7 +268,7 @@ end
 Construct an AIMessage by extracting all fields from raw API result.
 If `endpoint` is provided, cost is calculated from token usage.
 """
-function AIMessage(schema::AbstractRequestSchema, result::Dict; 
+function AIMessage(schema::AbstractRequestSchema, result::Dict;
                    endpoint::Union{Nothing,ProviderEndpoint}=nothing, elapsed::Float64=-1.0)
     content = something(extract_content(schema, result), "")
     tokens = extract_tokens(schema, result)
@@ -274,6 +280,7 @@ function AIMessage(schema::AbstractRequestSchema, result::Dict;
         elapsed = elapsed,
         cost = cost,
         reasoning = extract_reasoning(schema, result),
-        tool_calls = extract_tool_calls(schema, result)
+        tool_calls = extract_tool_calls(schema, result),
+        image_data = extract_images(schema, result)
     )
 end
