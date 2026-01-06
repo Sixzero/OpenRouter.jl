@@ -90,24 +90,6 @@ function convert_tool(::ChatCompletionSchema, tool::Tool)
     )
 end
 
-# Anthropic format: { name, description, input_schema }
-function convert_tool(::AnthropicSchema, tool::Tool)
-    Dict{String,Any}(
-        "name" => tool.name,
-        "description" => tool.description,
-        "input_schema" => tool.parameters
-    )
-end
-
-# ResponseSchema format: { type: "function", name, description, parameters } (flat, no function wrapper)
-function convert_tool(::ResponseSchema, tool::Tool)
-    Dict{String,Any}(
-        "type" => "function",
-        "name" => tool.name,
-        "description" => tool.description,
-        "parameters" => tool.parameters
-    )
-end
 
 """
 Build the URL for ChatCompletionSchema.
@@ -146,8 +128,17 @@ Anthropic Claude-style request schema.
 """
 struct AnthropicSchema <: AbstractRequestSchema
     endpoint::String
-    
+
     AnthropicSchema() = new("/v1/messages")
+end
+
+# Anthropic format: { name, description, input_schema }
+function convert_tool(::AnthropicSchema, tool::Tool)
+    Dict{String,Any}(
+        "name" => tool.name,
+        "description" => tool.description,
+        "input_schema" => tool.parameters
+    )
 end
 
 """
@@ -306,13 +297,15 @@ function build_payload(::GeminiSchema, prompt, model_id::AbstractString, sys_msg
         elseif sk == "stop_sequences" || sk == "stopSequences"
             generation_config["stopSequences"] = v
         elseif sk == "thinkingConfig"
-            if v isa AbstractDict
+            if v === false || v === nothing
+                user_thinking_config["__disabled__"] = true
+            elseif v isa AbstractDict
                 empty!(user_thinking_config)
                 for (tk, tv) in v
                     user_thinking_config[string(tk)] = tv
                 end
             else
-                @warn "thinkingConfig must be an AbstractDict, got $(typeof(v)). Ignoring."
+                @warn "thinkingConfig must be an AbstractDict or false, got $(typeof(v)). Ignoring."
             end
         elseif sk in ["candidateCount", "seed", "responseLogprobs", "logprobs",
                       "enableEnhancedCivicAnswers", "speechConfig",
@@ -323,11 +316,14 @@ function build_payload(::GeminiSchema, prompt, model_id::AbstractString, sys_msg
         end
     end
     
-    # Always include thoughts
-    thinking_config = Dict{String, Any}("include_thoughts" => true)
-    isempty(user_thinking_config) || merge!(thinking_config, user_thinking_config)
-    
-    generation_config["thinkingConfig"] = thinking_config
+    # Include thoughts unless explicitly disabled (thinkingConfig=false or nothing)
+    if !get(user_thinking_config, "__disabled__", false)
+        thinking_config = Dict{String, Any}("include_thoughts" => true)
+        for (k, v) in user_thinking_config
+            thinking_config[k] = v
+        end
+        generation_config["thinkingConfig"] = thinking_config
+    end
     
     payload["generationConfig"] = generation_config
     
@@ -418,6 +414,31 @@ function extract_reasoning(::AnthropicSchema, result::Dict)
             if get(content_block, "type", nothing) == "thinking"
                 return get(content_block, "thinking", nothing)
             end
+        end
+    end
+    return nothing
+end
+
+"""
+Extract generated images from Gemini API response.
+Returns Vector{String} of base64 data URLs or nothing if no images.
+"""
+function extract_images(::GeminiSchema, result::Dict)
+    if haskey(result, "candidates") && length(result["candidates"]) > 0
+        candidate = result["candidates"][1]
+        if haskey(candidate, "content") && haskey(candidate["content"], "parts")
+            images = String[]
+            for part in candidate["content"]["parts"]
+                if haskey(part, "inlineData") || haskey(part, "inline_data")
+                    inline_data = get(part, "inlineData", get(part, "inline_data", nothing))
+                    if inline_data !== nothing
+                        mime_type = get(inline_data, "mimeType", get(inline_data, "mime_type", "image/png"))
+                        data = get(inline_data, "data", "")
+                        push!(images, "data:$mime_type;base64,$data")
+                    end
+                end
+            end
+            return isempty(images) ? nothing : images
         end
     end
     return nothing
