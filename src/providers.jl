@@ -277,14 +277,36 @@ const PROVIDER_INFO = Dict{String,ProviderInfo}(
 )
 
 """
-    add_provider(name::String, base_url::String, auth_header_format::String="Bearer", 
-                api_key_env_var::Union{String,Nothing}=nothing, 
+    set_provider!(name::String, base_url::String, auth_header_format::String="Bearer",
+                 api_key_env_var::Union{String,Nothing}=nothing,
+                 default_headers::Dict{String,String}=Dict{String,String}(),
+                 model_name_transform::Union{Function,Nothing}=nothing,
+                 schema::AbstractRequestSchema=ChatCompletionSchema(),
+                 notes::String="Custom provider")
+
+Set/override a provider in the registry. Use this when intentionally overwriting an existing provider.
+"""
+function set_provider!(name::String, base_url::String,
+                      auth_header_format::String="Bearer",
+                      api_key_env_var::Union{String,Nothing}=nothing,
+                      default_headers::Dict{String,String}=Dict{String,String}(),
+                      model_name_transform::Union{Function,Nothing}=nothing,
+                      schema::AbstractRequestSchema=ChatCompletionSchema(),
+                      notes::String="Custom provider")
+    PROVIDER_INFO[lowercase(name)] = ProviderInfo(
+        base_url, auth_header_format, api_key_env_var, default_headers, model_name_transform, schema, notes
+    )
+end
+
+"""
+    add_provider(name::String, base_url::String, auth_header_format::String="Bearer",
+                api_key_env_var::Union{String,Nothing}=nothing,
                 default_headers::Dict{String,String}=Dict{String,String}(),
                 model_name_transform::Union{Function,Nothing}=nothing,
                 schema::AbstractRequestSchema=ChatCompletionSchema(),
                 notes::String="Custom provider")
 
-Add a provider to the registry.
+Add a provider to the registry. Warns if overwriting an existing provider.
 
 # Example
 ```julia
@@ -299,9 +321,11 @@ function add_provider(name::String, base_url::String,
                      model_name_transform::Union{Function,Nothing}=nothing,
                      schema::AbstractRequestSchema=ChatCompletionSchema(),
                      notes::String="Custom provider")
-    PROVIDER_INFO[lowercase(name)] = ProviderInfo(
-        base_url, auth_header_format, api_key_env_var, default_headers, model_name_transform, schema, notes
-    )
+    key = lowercase(name)
+    if haskey(PROVIDER_INFO, key)
+        @warn "Overwriting existing provider '$name'. Use set_provider! to suppress this warning."
+    end
+    set_provider!(name, base_url, auth_header_format, api_key_env_var, default_headers, model_name_transform, schema, notes)
 end
 
 """
