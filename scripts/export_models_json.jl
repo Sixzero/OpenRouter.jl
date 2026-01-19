@@ -2,7 +2,6 @@
 
 using OpenRouter
 using JSON3
-using Dates
 
 # ---------- Configuration ----------
 
@@ -34,9 +33,10 @@ function pricing_to_numeric_dict(p::Pricing)
         "discount" => p.discount
     )
 
-    # Drop keys where value is `nothing`
+    # Drop keys where value is `nothing`, sort keys for consistent ordering
     pricing = Dict{String,Any}()
-    for (k, v) in raw
+    for k in sort(collect(keys(raw)))
+        v = raw[k]
         v === nothing && continue
         pricing[k] = v
     end
@@ -121,7 +121,9 @@ function process_model(m::OpenRouterModel, i::Int, total::Int)
         end
 
         endpoints = filtered_endpoints
-        ep_dicts = [endpoint_to_frontend_dict(ep) for ep in filtered_endpoints]
+        # Sort endpoints by tag for consistent ordering
+        sorted_endpoints = sort(filtered_endpoints, by=ep -> ep.tag)
+        ep_dicts = [endpoint_to_frontend_dict(ep) for ep in sorted_endpoints]
     catch err
         @warn "Failed to fetch endpoints for model" id=m.id exception=(err, catch_backtrace())
     end
@@ -160,13 +162,13 @@ function build_models_data()
 
     println("\nTotal excluded endpoints: $excluded_endpoints_count")
 
-    # Sort models by created timestamp (newest first) for consistent ordering
-    sort!(specs, by=d -> d["created"], rev=true)
+    # Sort models alphabetically by id for consistent ordering
+    sort!(specs, by=d -> d["id"])
 
     aliases = Dict{String,String}()
 
-    # Providers list is not that meaningful here; keep empty/simple.
-    providers = list_providers()
+    # Providers list sorted alphabetically for consistent ordering
+    providers = sort(list_providers())
 
     return Dict(
         "models" => specs,
@@ -174,8 +176,7 @@ function build_models_data()
         "total_models" => length(specs),
         "total_aliases" => length(aliases),
         "providers" => providers,
-        "excluded_providers" => collect(EXCLUDED_PROVIDERS),
-        "generated_at" => string(now())
+        "excluded_providers" => sort(collect(EXCLUDED_PROVIDERS))
     )
 end
 
