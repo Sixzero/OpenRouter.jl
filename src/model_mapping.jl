@@ -68,6 +68,7 @@ function anthropic_model_transform(model_id::AbstractString)::AbstractString
     base_id == "claude-sonnet-4" && return "claude-sonnet-4-20250514"
     base_id == "claude-opus-4" && return "claude-opus-4-20250514"
     base_id == "claude-opus-4-1" && return "claude-opus-4-1-20250805"
+    base_id == "claude-opus-4-6" && return "claude-opus-4-6"
     base_id == "claude-sonnet-4-5" && return "claude-sonnet-4-5-20250929"
     base_id == "claude-haiku-4-5" && return "claude-haiku-4-5-20251001"
     
