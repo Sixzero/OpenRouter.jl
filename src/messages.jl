@@ -118,7 +118,8 @@ function to_openai_messages(msgs::Vector{AbstractMessage})
         
         # Handle images for UserMessage
         if m isa UserMessage && m.image_data !== nothing && !isempty(m.image_data)
-            content = Any[Dict("type" => "text", "text" => m.content)]
+            content = Any[]
+            !isempty(m.content) && push!(content, Dict("type" => "text", "text" => m.content))
             for img in m.image_data
                 push!(content, Dict("type" => "image_url", "image_url" => Dict("url" => img)))
             end
@@ -159,7 +160,8 @@ function to_anthropic_messages(msgs::Vector{AbstractMessage}; cache::Union{Nothi
 
         # Handle images for UserMessage
         if m isa UserMessage && m.image_data !== nothing && !isempty(m.image_data)
-            content = Any[Dict{String, Any}("type" => "text", "text" => m.content)]
+            content = Any[]
+            !isempty(m.content) && push!(content, Dict{String, Any}("type" => "text", "text" => m.content))
             for img in m.image_data
                 data_type, data = extract_image_attributes(img)
                 @assert data_type in ["image/jpeg", "image/png", "image/gif", "image/webp"] "Unsupported image type: $data_type"
@@ -215,7 +217,8 @@ function to_gemini_contents(msgs::Vector{AbstractMessage})
         
         if m isa UserMessage && m.image_data !== nothing && !isempty(m.image_data)
             # Gemini multimodal format
-            parts = Any[Dict("text" => m.content)]
+            parts = Any[]
+            !isempty(m.content) && push!(parts, Dict("text" => m.content))
             for img in m.image_data
                 data_type, data = extract_image_attributes(img)
                 # Gemini expects inline_data format
