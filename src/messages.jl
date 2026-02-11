@@ -144,7 +144,7 @@ function to_openai_messages(msgs::Vector{AbstractMessage})
 end
 
 # Anthropic-style: role + content=[{type="text", text=...}, ...]
-to_anthropic_content(x) = isa(x, AbstractString) ? Any[Dict{String, Any}("type" => "text", "text" => x)] : x
+to_anthropic_content(x) = isa(x, AbstractString) ? (isempty(x) ? Any[] : Any[Dict{String, Any}("type" => "text", "text" => x)]) : x
 
 function to_anthropic_messages(msgs::Vector{AbstractMessage}; cache::Union{Nothing,Symbol}=nothing)
     out = Any[]
@@ -173,6 +173,9 @@ function to_anthropic_messages(msgs::Vector{AbstractMessage}; cache::Union{Nothi
         else
             content = to_anthropic_content(m.content)
         end
+
+        # Skip messages with empty content (API requires non-empty content)
+        isempty(content) && continue
 
         msg_dict = Dict("role" => role, "content" => content)
 
