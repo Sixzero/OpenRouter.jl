@@ -28,8 +28,10 @@ CREATE_FILE_TOOL = [Tool(
 # Stream with tool calls - ask for long content so arguments stream across chunks
 response = aigen(
     "Welcome me and then, use the create_file tool to create /tmp/story.txt with a 20-word short story about a robot learning to paint.",
-    # "anthropic:anthropic/claude-sonnet-4.5";
-    "openai:openai/gpt-5.2";
+    "openai:openai/gpt-5.2";                            # ResponseSchema
+    # "anthropic:anthropic/claude-sonnet-4.5";           # AnthropicSchema
+    # "groq:meta-llama/llama-4-scout";                   # ChatCompletionSchema
+    # "google-ai-studio:google/gemini-2.5-flash";        # GeminiSchema
     tools=CREATE_FILE_TOOL,
     streamcallback=HttpStreamCallback(; out=stdout, verbose=false)
 )

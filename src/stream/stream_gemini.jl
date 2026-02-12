@@ -110,25 +110,26 @@ Build response body from chunks to mimic standard Gemini API response.
 """
 function build_response_body(schema::GeminiSchema, cb::AbstractLLMStream; verbose::Bool = false, kwargs...)
     isempty(cb.chunks) && return nothing
-    
+
     response = nothing
     content_parts = String[]
     reasoning_parts = String[]
+    function_call_parts = Any[]
     final_candidate = nothing
     final_usage_metadata = nothing
-    
+
     for chunk in cb.chunks
         isnothing(chunk.json) && continue
-        
+
         if isnothing(response)
             response = chunk.json |> copy
         end
-        
+
         # Collect content from candidates and track the final candidate state
         if haskey(chunk.json, :candidates) && !isempty(chunk.json[:candidates])
             candidate = chunk.json[:candidates][1]
             final_candidate = candidate  # Keep updating to get the final state
-            
+
             if haskey(candidate, :content) && haskey(candidate[:content], :parts)
                 parts = candidate[:content][:parts]
                 for part in parts
@@ -139,25 +140,27 @@ function build_response_body(schema::GeminiSchema, cb::AbstractLLMStream; verbos
                         else
                             push!(content_parts, part[:text])
                         end
+                    elseif haskey(part, :functionCall)
+                        push!(function_call_parts, Dict(:functionCall => copy(part[:functionCall])))
                     end
                 end
             end
         end
-        
+
         # Track the final usage metadata (appears in last chunk with complete token counts)
         if haskey(chunk.json, :usageMetadata)
             final_usage_metadata = chunk.json[:usageMetadata]
         end
     end
-    
+
     if !isnothing(response) && !isnothing(final_candidate)
         full_content = join(content_parts)
         full_reasoning = join(reasoning_parts)
-        
+
         # Build final candidate with accumulated content and final state
         final_candidate_dict = Dict(final_candidate)
-        
-        # Build parts array with both reasoning and content if present
+
+        # Build parts array with reasoning, content, and function calls
         parts = []
         if !isempty(full_reasoning)
             push!(parts, Dict(:text => full_reasoning, :thought => true))
@@ -165,21 +168,22 @@ function build_response_body(schema::GeminiSchema, cb::AbstractLLMStream; verbos
         if !isempty(full_content)
             push!(parts, Dict(:text => full_content))
         end
-        
+        append!(parts, function_call_parts)
+
         if !isempty(parts)
             final_candidate_dict[:content] = Dict(
                 :parts => parts,
                 :role => get(get(final_candidate_dict, :content, Dict()), :role, "model")
             )
         end
-        
+
         response[:candidates] = [final_candidate_dict]
-        
+
         # Preserve the final usage metadata with complete token counts
         if !isnothing(final_usage_metadata)
             response[:usageMetadata] = final_usage_metadata
         end
     end
-    
+
     return response
 end

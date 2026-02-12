@@ -66,32 +66,35 @@ is_usr_meta(schema::AnthropicSchema, tokens::TokenCounts) =
     build_response_body(schema::AnthropicSchema, cb::AbstractLLMStream; verbose::Bool = false, kwargs...)
 
 Build response body from chunks to mimic standard Anthropic API response.
-
-Note: Limited functionality. Does NOT support tool use.
+Supports text and tool_use content blocks.
 """
 function build_response_body(schema::AnthropicSchema, cb::AbstractLLMStream; verbose::Bool = false, kwargs...)
     isempty(cb.chunks) && return nothing
-    
+
     response = nothing
     usage = nothing
     content_buf = IOBuffer()
-    
+    # Accumulate tool_use blocks: index => Dict with :id, :name, :input_json (string)
+    tool_blocks = Dict{Int, Dict{Symbol, Any}}()
+    current_block_index = -1
+    current_block_type = nothing
+
     for chunk in cb.chunks
         isnothing(chunk.json) && continue
-        
+
         chunk_type = get(chunk.json, :type, nothing)
-        
+
         # Core message body from message_start
         if chunk_type == "message_start" && haskey(chunk.json, :message)
             response = chunk.json[:message] |> copy
             usage = get(response, :usage, Dict())
         end
-        
+
         # Update stop reason and usage from message_delta
         if chunk_type == "message_delta"
             delta = get(chunk.json, :delta, Dict())
             response = isnothing(response) ? copy(delta) : merge(response, delta)
-            
+
             # Extract usage from message_delta (this is where final token counts come)
             chunk_usage = get(chunk.json, :usage, nothing)
             if !isnothing(chunk_usage)
@@ -99,24 +102,55 @@ function build_response_body(schema::AnthropicSchema, cb::AbstractLLMStream; ver
             end
         end
 
-        # Load text chunks from content blocks
-        if chunk_type == "content_block_start" || 
-           chunk_type == "content_block_delta" || 
-           chunk_type == "content_block_stop"
-            
-            delta_block = get(chunk.json, :content_block, nothing)
-            isnothing(delta_block) && (delta_block = get(chunk.json, :delta, Dict()))
-            
-            text = get(delta_block, :text, nothing)
-            !isnothing(text) && write(content_buf, text)
+        # Track content block boundaries
+        if chunk_type == "content_block_start"
+            current_block_index = get(chunk.json, :index, current_block_index + 1)
+            content_block = get(chunk.json, :content_block, Dict())
+            current_block_type = get(content_block, :type, nothing)
+
+            if current_block_type == "tool_use"
+                tool_blocks[current_block_index] = Dict{Symbol, Any}(
+                    :id => get(content_block, :id, ""),
+                    :name => get(content_block, :name, ""),
+                    :input_json => IOBuffer()
+                )
+            end
+        end
+
+        if chunk_type == "content_block_delta"
+            delta = get(chunk.json, :delta, Dict())
+            delta_type = get(delta, :type, nothing)
+
+            if delta_type == "text_delta"
+                text = get(delta, :text, nothing)
+                !isnothing(text) && write(content_buf, text)
+            elseif delta_type == "input_json_delta"
+                partial = get(delta, :partial_json, nothing)
+                if !isnothing(partial) && haskey(tool_blocks, current_block_index)
+                    write(tool_blocks[current_block_index][:input_json], partial)
+                end
+            end
         end
     end
-    
+
     if !isnothing(response)
         response isa JSON3.Object && (response = copy(response))
-        response[:content] = [Dict(:type => "text", :text => String(take!(content_buf)))]
+
+        # Build content array with text and tool_use blocks
+        content = Any[]
+        text_content = String(take!(content_buf))
+        !isempty(text_content) && push!(content, Dict(:type => "text", :text => text_content))
+
+        for idx in sort(collect(keys(tool_blocks)))
+            tb = tool_blocks[idx]
+            json_str = String(take!(tb[:input_json]))
+            input = isempty(json_str) ? Dict() : JSON3.read(json_str, Dict)
+            push!(content, Dict(:type => "tool_use", :id => tb[:id], :name => tb[:name], :input => input))
+        end
+
+        response[:content] = content
         !isnothing(usage) && (response[:usage] = usage)
     end
-    
+
     return response
 end

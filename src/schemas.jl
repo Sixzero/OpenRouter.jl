@@ -234,6 +234,23 @@ struct GeminiSchema <: AbstractRequestSchema
     GeminiSchema() = new("/models/{model}:generateContent")
 end
 
+# Gemini format: tools = [{ functionDeclarations: [{ name, description, parameters }] }]
+function convert_tool(::GeminiSchema, tool::Tool)
+    Dict{String,Any}(
+        "name" => tool.name,
+        "description" => tool.description,
+        "parameters" => tool.parameters
+    )
+end
+
+function convert_tools(schema::GeminiSchema, tools::Vector{Tool})
+    [Dict{String,Any}("functionDeclarations" => [convert_tool(schema, t) for t in tools])]
+end
+
+function convert_tools(schema::GeminiSchema, tool::Tool)
+    [Dict{String,Any}("functionDeclarations" => [convert_tool(schema, tool)])]
+end
+
 """
 Build contents array for GeminiSchema.
 
@@ -311,6 +328,8 @@ function build_payload(::GeminiSchema, prompt, model_id::AbstractString, sys_msg
                       "enableEnhancedCivicAnswers", "speechConfig",
                       "imageConfig", "mediaResolution"]
             generation_config[sk] = v
+        elseif sk == "tools"
+            payload["tools"] = convert_tools(GeminiSchema(), v)
         else
             payload[sk] = v
         end
@@ -357,7 +376,7 @@ function extract_content(::GeminiSchema, result::Dict)
             end
         end
     end
-    error("Unexpected response format from Gemini API")
+    return nothing
 end
 
 """
@@ -404,7 +423,23 @@ function extract_tool_calls(::AnthropicSchema, result::Dict)
 end
 
 function extract_tool_calls(::GeminiSchema, result::Dict)
-    # TODO: Implement Gemini tool call extraction
+    if haskey(result, "candidates") && length(result["candidates"]) > 0
+        candidate = result["candidates"][1]
+        if haskey(candidate, "content") && haskey(candidate["content"], "parts")
+            tool_calls = Dict{String,Any}[]
+            for part in candidate["content"]["parts"]
+                fc = get(part, "functionCall", nothing)
+                if !isnothing(fc)
+                    push!(tool_calls, Dict{String,Any}(
+                        "id" => get(fc, "id", "gemini_$(length(tool_calls))"),
+                        "type" => "function",
+                        "function" => Dict("name" => fc["name"], "arguments" => JSON3.write(fc["args"]))
+                    ))
+                end
+            end
+            return isempty(tool_calls) ? nothing : tool_calls
+        end
+    end
     return nothing
 end
 
