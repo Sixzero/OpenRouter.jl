@@ -68,6 +68,15 @@ function normalize_messages(prompt, sys_msg)
         push!(msgs, UserMessage(content=prompt))
     end
 
+    # Validate: UserMessage must have content or image_data
+    for m in msgs
+        if m isa UserMessage
+            has_content = !isempty(m.content)
+            has_image = m.image_data !== nothing && !isempty(m.image_data)
+            @assert has_content || has_image "UserMessage must have non-empty content or image_data"
+        end
+    end
+
     # Warn on consecutive same-type messages
     for i in 2:length(msgs)
         if typeof(msgs[i]) === typeof(msgs[i - 1])
