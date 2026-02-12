@@ -1,10 +1,16 @@
 abstract type AbstractMessage end
 
-Base.@kwdef struct UserMessage <: AbstractMessage
+struct UserMessage <: AbstractMessage
     content::AbstractString
-    name::Union{Nothing, String} = nothing
-    image_data::Union{Nothing, Vector{String}} = nothing  # base64 or data URLs
-    extras::Union{Nothing, Dict{Symbol, Any}} = nothing
+    name::Union{Nothing, String}
+    image_data::Union{Nothing, Vector{String}}  # base64 or data URLs
+    extras::Union{Nothing, Dict{Symbol, Any}}
+    function UserMessage(; content::AbstractString="", name=nothing, image_data=nothing, extras=nothing)
+        has_content = !isempty(content)
+        has_image = image_data !== nothing && !isempty(image_data)
+        @assert has_content || has_image "UserMessage must have non-empty content or image_data"
+        new(content, name, image_data, extras)
+    end
 end
 
 Base.@kwdef struct AIMessage <: AbstractMessage
@@ -66,15 +72,6 @@ function normalize_messages(prompt, sys_msg)
         end
     else
         push!(msgs, UserMessage(content=prompt))
-    end
-
-    # Validate: UserMessage must have content or image_data
-    for m in msgs
-        if m isa UserMessage
-            has_content = !isempty(m.content)
-            has_image = m.image_data !== nothing && !isempty(m.image_data)
-            @assert has_content || has_image "UserMessage must have non-empty content or image_data"
-        end
     end
 
     # Warn on consecutive same-type messages
