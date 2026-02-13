@@ -101,7 +101,10 @@ using Aqua
 
     # Include custom provider tests
     include("test_custom_providers.jl")
-    
+
+    # Tool message serialization tests
+    include("test_tool_messages.jl")
+
     # Echo server tests (all schemas)
     include("test_echo_server.jl")
 end

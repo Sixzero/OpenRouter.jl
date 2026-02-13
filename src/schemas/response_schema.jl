@@ -33,8 +33,12 @@ function build_payload(schema::ResponseSchema, prompt, model_id::AbstractString,
     system_msgs = filter(m -> m isa SystemMessage, normalized)
     input_msgs = filter(m -> !(m isa SystemMessage), normalized)
     
-    # Build input items
-    payload["input"] = [message_to_response_input(msg) for msg in input_msgs]
+    # Build input items (all methods return Vector for uniform flattening)
+    input_items = Any[]
+    for msg in input_msgs
+        append!(input_items, message_to_response_input(msg))
+    end
+    payload["input"] = input_items
     
     # Add combined system instructions if any
     if !isempty(system_msgs)
@@ -59,30 +63,34 @@ function build_payload(schema::ResponseSchema, prompt, model_id::AbstractString,
     return payload
 end
 
-# Convert message types to Response API input format
-function message_to_response_input(msg::UserMessage)
-    return Dict(
-        "type" => "message",
-        "role" => "user",
-        "content" => msg.content
-    )
-end
+# Convert message types to Response API input format (all return Vector for uniform flattening)
+message_to_response_input(msg::UserMessage) = [Dict(
+    "type" => "message", "role" => "user", "content" => msg.content
+)]
 
 function message_to_response_input(msg::AIMessage)
-    return Dict(
-        "type" => "message",
-        "role" => "assistant",
-        "content" => msg.content
-    )
+    items = Any[]
+    !isempty(msg.content) && push!(items, Dict("type" => "message", "role" => "assistant", "content" => msg.content))
+    if msg.tool_calls !== nothing
+        for tc in msg.tool_calls
+            fn = tc["function"]
+            push!(items, Dict{String,Any}(
+                "type" => "function_call", "call_id" => tc["id"],
+                "name" => fn["name"], "arguments" => fn["arguments"]
+            ))
+        end
+    end
+    isempty(items) && push!(items, Dict("type" => "message", "role" => "assistant", "content" => msg.content))
+    return items
 end
 
-function message_to_response_input(msg::AbstractString)
-    return Dict(
-        "type" => "message",
-        "role" => "user",
-        "content" => msg
-    )
-end
+message_to_response_input(msg::ToolMessage) = [Dict{String,Any}(
+    "type" => "function_call_output", "call_id" => msg.tool_call_id, "output" => msg.content
+)]
+
+message_to_response_input(msg::AbstractString) = [Dict(
+    "type" => "message", "role" => "user", "content" => msg
+)]
 
 # Extract reasoning from Response API
 function extract_reasoning(schema::ResponseSchema, response::Dict)

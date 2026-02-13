@@ -38,6 +38,22 @@ Base.@kwdef struct ToolMessage <: AbstractMessage
     name::Union{Nothing, String} = nothing
 end
 
+"""Parse the arguments from a tool_call dict, handling both JSON string and already-parsed Dict."""
+function get_arguments(tool_call::Dict)::Dict{String,Any}
+    raw = tool_call["function"]["arguments"]
+    raw isa AbstractString ? JSON3.read(raw, Dict{String,Any}) : Dict{String,Any}(raw)
+end
+
+"""Create a ToolMessage from a tool_call dict and string result."""
+ToolMessage(tool_call::Dict, content::AbstractString) = ToolMessage(
+    content = content,
+    tool_call_id = tool_call["id"],
+    name = get(tool_call["function"], "name", nothing)
+)
+
+"""Create a ToolMessage by running `fn(args::Dict{String,Any})` with the tool_call's parsed arguments."""
+ToolMessage(tool_call::Dict, fn::Function) = ToolMessage(tool_call, string(fn(get_arguments(tool_call))))
+
 """
 Normalize `prompt` + `sys_msg` into a flat vector of AbstractMessage.
 
@@ -74,9 +90,9 @@ function normalize_messages(prompt, sys_msg)
         push!(msgs, UserMessage(content=prompt))
     end
 
-    # Warn on consecutive same-type messages
+    # Warn on consecutive same-type messages (ToolMessages are expected consecutive for parallel tool calls)
     for i in 2:length(msgs)
-        if typeof(msgs[i]) === typeof(msgs[i - 1])
+        if typeof(msgs[i]) === typeof(msgs[i - 1]) && !(msgs[i] isa ToolMessage)
             @warn "Consecutive messages of the same type detected" index=i type=typeof(msgs[i])
         end
     end
@@ -140,7 +156,11 @@ function to_openai_messages(msgs::Vector{AbstractMessage})
         
         # Handle AIMessage extras (tool_calls, reasoning_content)
         if m isa AIMessage
-            m.tool_calls !== nothing && (msg_dict["tool_calls"] = m.tool_calls)
+            if m.tool_calls !== nothing
+                msg_dict["tool_calls"] = m.tool_calls
+                # Providers expect null content when only tool_calls are present
+                isempty(m.content) && (msg_dict["content"] = nothing)
+            end
             m.reasoning !== nothing && (msg_dict["reasoning_content"] = m.reasoning)
         end
 
@@ -155,11 +175,28 @@ to_anthropic_content(x) = isa(x, AbstractString) ? Any[Dict{String, Any}("type" 
 function to_anthropic_messages(msgs::Vector{AbstractMessage}; cache::Union{Nothing,Symbol}=nothing)
     out = Any[]
     for m in msgs
-        # Skip SystemMessage - it should be handled separately in build_payload
         if m isa SystemMessage
             continue
         end
-        
+
+        # ToolMessage → tool_result block in a user message
+        if m isa ToolMessage
+            tool_result = Dict{String,Any}(
+                "type" => "tool_result",
+                "tool_use_id" => m.tool_call_id,
+                "content" => m.content
+            )
+            # Group consecutive ToolMessages into one user message (Anthropic requires alternation)
+            if !isempty(out) && out[end]["role"] == "user" &&
+               !isempty(out[end]["content"]) && out[end]["content"][end] isa Dict &&
+               get(out[end]["content"][end], "type", "") == "tool_result"
+                push!(out[end]["content"], tool_result)
+            else
+                push!(out, Dict("role" => "user", "content" => Any[tool_result]))
+            end
+            continue
+        end
+
         role = m isa UserMessage ? "user" :
                m isa AIMessage ? "assistant" :
                error("Unknown message type $(typeof(m)) for Anthropic schema")
@@ -180,9 +217,26 @@ function to_anthropic_messages(msgs::Vector{AbstractMessage}; cache::Union{Nothi
             content = to_anthropic_content(m.content)
         end
 
-        msg_dict = Dict("role" => role, "content" => content)
+        # AIMessage with tool_calls → append tool_use blocks
+        if m isa AIMessage && m.tool_calls !== nothing
+            # Remove empty text block — Anthropic rejects empty text alongside tool_use
+            if !isempty(content) && content[1] isa Dict &&
+               get(content[1], "type", "") == "text" && isempty(get(content[1], "text", ""))
+                popfirst!(content)
+            end
+            for tc in m.tool_calls
+                fn = tc["function"]
+                args = get_arguments(tc)
+                push!(content, Dict{String,Any}(
+                    "type" => "tool_use",
+                    "id" => tc["id"],
+                    "name" => fn["name"],
+                    "input" => args
+                ))
+            end
+        end
 
-        push!(out, msg_dict)
+        push!(out, Dict("role" => role, "content" => content))
     end
 
     # Apply Anthropic prompt caching markers if requested
@@ -211,28 +265,51 @@ end
 function to_gemini_contents(msgs::Vector{AbstractMessage})
     out = Any[]
     for m in msgs
-        # Skip SystemMessage - handled separately
         if m isa SystemMessage
             continue
         end
-        
-        # Determine role
+
+        # ToolMessage → functionResponse part in a user message
+        if m isa ToolMessage
+            part = Dict{String,Any}(
+                "functionResponse" => Dict{String,Any}(
+                    "name" => something(m.name, m.tool_call_id),
+                    "response" => Dict{String,Any}("content" => m.content)
+                )
+            )
+            # Group consecutive ToolMessages into one user message
+            if !isempty(out) && out[end]["role"] == "user" &&
+               !isempty(out[end]["parts"]) && haskey(out[end]["parts"][end], "functionResponse")
+                push!(out[end]["parts"], part)
+            else
+                push!(out, Dict("role" => "user", "parts" => Any[part]))
+            end
+            continue
+        end
+
         role = m isa UserMessage ? "user" :
                m isa AIMessage ? "model" :
                error("Unknown message type $(typeof(m)) for Gemini schema")
-        
+
         if m isa UserMessage && m.image_data !== nothing && !isempty(m.image_data)
-            # Gemini multimodal format
             parts = Any[]
             !isempty(m.content) && push!(parts, Dict("text" => m.content))
             for img in m.image_data
                 data_type, data = extract_image_attributes(img)
-                # Gemini expects inline_data format
                 push!(parts, Dict("inline_data" => Dict("mime_type" => data_type, "data" => data)))
             end
             push!(out, Dict("role" => role, "parts" => parts))
         elseif isa(m.content, AbstractString)
-            push!(out, Dict("role" => role, "parts" => Any[Dict("text" => m.content)]))
+            parts = isempty(m.content) ? Any[] : Any[Dict("text" => m.content)]
+            # AIMessage with tool_calls → append functionCall parts
+            if m isa AIMessage && m.tool_calls !== nothing
+                for tc in m.tool_calls
+                    fn = tc["function"]
+                    args = get_arguments(tc)
+                    push!(parts, Dict{String,Any}("functionCall" => Dict{String,Any}("name" => fn["name"], "args" => args)))
+                end
+            end
+            push!(out, Dict("role" => role, "parts" => parts))
         else
             push!(out, Dict("role" => role, "parts" => m.content))
         end
