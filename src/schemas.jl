@@ -19,9 +19,29 @@ This is the default schema used by most providers.
 """
 struct ChatCompletionSchema <: AbstractRequestSchema
     endpoint::String
-    
+
     ChatCompletionSchema() = new("/chat/completions")
 end
+
+"""
+ChatCompletion schema with Anthropic-style token semantics.
+`prompt_tokens` is already non-cached (additive with cache_read).
+"""
+struct ChatCompletionAnthropicSchema <: AbstractRequestSchema
+    inner::ChatCompletionSchema
+    ChatCompletionAnthropicSchema() = new(ChatCompletionSchema())
+end
+
+# Forward all ChatCompletionSchema methods except extract_tokens
+const _ccs = ChatCompletionSchema()
+build_messages(::ChatCompletionAnthropicSchema, prompt, sys_msg) = build_messages(_ccs, prompt, sys_msg)
+build_payload(::ChatCompletionAnthropicSchema, prompt, model_id::AbstractString, sys_msg, stream::Bool=false; kw...) = build_payload(_ccs, prompt, model_id, sys_msg, stream; kw...)
+convert_tool(::ChatCompletionAnthropicSchema, tool::Tool) = convert_tool(_ccs, tool)
+build_url(s::ChatCompletionAnthropicSchema, base_url::AbstractString, model_id::AbstractString, stream::Bool=false) = "$(base_url)$(s.inner.endpoint)"
+extract_content(::ChatCompletionAnthropicSchema, result::Dict) = extract_content(_ccs, result)
+extract_reasoning(::ChatCompletionAnthropicSchema, result::Dict) = extract_reasoning(_ccs, result)
+extract_tool_calls(::ChatCompletionAnthropicSchema, result::Dict) = extract_tool_calls(_ccs, result)
+extract_finish_reason(::ChatCompletionAnthropicSchema, result::Dict) = extract_finish_reason(_ccs, result)
 
 """
 Build messages array for ChatCompletionSchema.
@@ -566,6 +586,29 @@ function extract_tokens(::ChatCompletionSchema, result::Union{Dict, JSON3.Object
         completion_tokens = completion_tokens,
         total_tokens = calculated_total,
         input_cache_read = input_cache_read  # cache hits
+    )
+end
+
+function extract_tokens(::ChatCompletionAnthropicSchema, result::Union{Dict, JSON3.Object})
+    usage = get(result, "usage", nothing)
+    usage === nothing && return nothing
+
+    # Anthropic-via-proxy: prompt_tokens is already non-cached, cache is additive
+    prompt_tokens = get(usage, "prompt_tokens", 0)
+    completion_tokens = get(usage, "completion_tokens", 0)
+    input_cache_read = 0
+    prompt_details = get(usage, "prompt_tokens_details", nothing)
+    if prompt_details !== nothing
+        input_cache_read = get(prompt_details, "cached_tokens", 0)
+    end
+
+    total_tokens = prompt_tokens + input_cache_read + completion_tokens
+
+    return TokenCounts(
+        prompt_tokens = prompt_tokens,
+        completion_tokens = completion_tokens,
+        total_tokens = total_tokens,
+        input_cache_read = input_cache_read
     )
 end
 

@@ -37,6 +37,7 @@ Base.@kwdef struct ToolMessage <: AbstractMessage
     tool_call_id::String
     name::Union{Nothing, String} = nothing
     image_data::Union{Nothing, Vector{String}} = nothing  # base64 or data URLs
+    extras::Union{Nothing, Dict{Symbol, Any}} = nothing
 end
 
 """Parse the arguments from a tool_call dict, handling both JSON string and already-parsed Dict."""
@@ -46,11 +47,12 @@ function get_arguments(tool_call::Dict)::Dict{String,Any}
 end
 
 """Create a ToolMessage from a tool_call dict and string result."""
-ToolMessage(tool_call::Dict, content::AbstractString; image_data=nothing) = ToolMessage(
+ToolMessage(tool_call::Dict, content::AbstractString; image_data=nothing, extras=nothing) = ToolMessage(
     content = content,
     tool_call_id = tool_call["id"],
     name = get(tool_call["function"], "name", nothing),
-    image_data = image_data
+    image_data = image_data,
+    extras = extras
 )
 
 """Create a ToolMessage by running `fn(args::Dict{String,Any})` with the tool_call's parsed arguments."""
