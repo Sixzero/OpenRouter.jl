@@ -155,6 +155,61 @@ end
         @test input[7]["role"] == "assistant"
     end
 
+    @testset "ToolMessage with image_data" begin
+        img = "data:image/png;base64,iVBORw0KGgo="
+        img_msgs = AbstractMessage[
+            UserMessage(content="Describe this"),
+            AIMessage(content="", tool_calls=[
+                Dict("id" => "c1", "type" => "function",
+                     "function" => Dict("name" => "screenshot", "arguments" => "{}"))]),
+            ToolMessage(content="Here's the screenshot", tool_call_id="c1", name="screenshot",
+                image_data=[img]),
+            AIMessage(content="I see a chart.")
+        ]
+
+        @testset "Anthropic" begin
+            out = to_anthropic_messages(img_msgs)
+            tr = out[3]["content"][1]  # tool_result (out[1]=user, out[2]=assistant, out[3]=user w/ tool_result)
+            @test tr["type"] == "tool_result"
+            @test tr["content"] isa Vector
+            @test tr["content"][1] == Dict{String,Any}("type" => "text", "text" => "Here's the screenshot")
+            @test tr["content"][2]["type"] == "image"
+            @test tr["content"][2]["source"]["media_type"] == "image/png"
+            @test tr["content"][2]["source"]["data"] == "iVBORw0KGgo="
+        end
+
+        @testset "OpenAI" begin
+            out = to_openai_messages(img_msgs)
+            # tool msg + injected user msg with image
+            @test out[3]["role"] == "tool"
+            @test out[4]["role"] == "user"
+            @test out[4]["content"][1]["type"] == "image_url"
+            @test out[4]["content"][1]["image_url"]["url"] == img
+        end
+
+        @testset "Gemini" begin
+            out = to_gemini_contents(img_msgs)
+            tr = out[3]  # user message with functionResponse + image (out[1]=user, out[2]=model, out[3]=user)
+            @test tr["role"] == "user"
+            @test haskey(tr["parts"][1], "functionResponse")
+            @test tr["parts"][2]["inline_data"]["mime_type"] == "image/png"
+            @test tr["parts"][2]["inline_data"]["data"] == "iVBORw0KGgo="
+        end
+
+        @testset "ResponseSchema" begin
+            payload = build_payload(ResponseSchema(), img_msgs, "gpt-5", nothing, false)
+            input = payload["input"]
+            # function_call_output followed by user message with input_image
+            fco = findfirst(x -> get(x, "type", "") == "function_call_output", input)
+            @test input[fco]["call_id"] == "c1"
+            img_msg = input[fco + 1]
+            @test img_msg["type"] == "message"
+            @test img_msg["role"] == "user"
+            @test img_msg["content"][1]["type"] == "input_image"
+            @test img_msg["content"][1]["image_url"] == img
+        end
+    end
+
     @testset "AIMessage without tool_calls unchanged" begin
         plain = AbstractMessage[
             UserMessage(content="Hello"),

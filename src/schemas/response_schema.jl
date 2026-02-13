@@ -84,9 +84,19 @@ function message_to_response_input(msg::AIMessage)
     return items
 end
 
-message_to_response_input(msg::ToolMessage) = [Dict{String,Any}(
-    "type" => "function_call_output", "call_id" => msg.tool_call_id, "output" => msg.content
-)]
+function message_to_response_input(msg::ToolMessage)
+    items = Any[Dict{String,Any}(
+        "type" => "function_call_output", "call_id" => msg.tool_call_id, "output" => msg.content
+    )]
+    if msg.image_data !== nothing && !isempty(msg.image_data)
+        img_content = Any[]
+        for img in msg.image_data
+            push!(img_content, Dict{String,Any}("type" => "input_image", "image_url" => img))
+        end
+        push!(items, Dict{String,Any}("type" => "message", "role" => "user", "content" => img_content))
+    end
+    return items
+end
 
 message_to_response_input(msg::AbstractString) = [Dict(
     "type" => "message", "role" => "user", "content" => msg

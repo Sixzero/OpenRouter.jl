@@ -36,6 +36,7 @@ Base.@kwdef struct ToolMessage <: AbstractMessage
     content::AbstractString
     tool_call_id::String
     name::Union{Nothing, String} = nothing
+    image_data::Union{Nothing, Vector{String}} = nothing  # base64 or data URLs
 end
 
 """Parse the arguments from a tool_call dict, handling both JSON string and already-parsed Dict."""
@@ -45,14 +46,15 @@ function get_arguments(tool_call::Dict)::Dict{String,Any}
 end
 
 """Create a ToolMessage from a tool_call dict and string result."""
-ToolMessage(tool_call::Dict, content::AbstractString) = ToolMessage(
+ToolMessage(tool_call::Dict, content::AbstractString; image_data=nothing) = ToolMessage(
     content = content,
     tool_call_id = tool_call["id"],
-    name = get(tool_call["function"], "name", nothing)
+    name = get(tool_call["function"], "name", nothing),
+    image_data = image_data
 )
 
 """Create a ToolMessage by running `fn(args::Dict{String,Any})` with the tool_call's parsed arguments."""
-ToolMessage(tool_call::Dict, fn::Function) = ToolMessage(tool_call, string(fn(get_arguments(tool_call))))
+ToolMessage(tool_call::Dict, fn::Function; image_data=nothing) = ToolMessage(tool_call, string(fn(get_arguments(tool_call))); image_data)
 
 """
 Normalize `prompt` + `sys_msg` into a flat vector of AbstractMessage.
@@ -127,6 +129,14 @@ function to_openai_messages(msgs::Vector{AbstractMessage})
         # Handle ToolMessage separately (different structure)
         if m isa ToolMessage
             push!(out, Dict("role" => "tool", "tool_call_id" => m.tool_call_id, "content" => m.content))
+            # OpenAI doesn't support images in tool results; inject as a following user message
+            if m.image_data !== nothing && !isempty(m.image_data)
+                img_parts = Any[]
+                for img in m.image_data
+                    push!(img_parts, Dict("type" => "image_url", "image_url" => Dict("url" => img)))
+                end
+                push!(out, Dict("role" => "user", "content" => img_parts))
+            end
             continue
         end
         
@@ -181,10 +191,23 @@ function to_anthropic_messages(msgs::Vector{AbstractMessage}; cache::Union{Nothi
 
         # ToolMessage → tool_result block in a user message
         if m isa ToolMessage
+            # Anthropic natively supports images in tool_result content arrays
+            if m.image_data !== nothing && !isempty(m.image_data)
+                tr_content = Any[]
+                !isempty(m.content) && push!(tr_content, Dict{String,Any}("type" => "text", "text" => m.content))
+                for img in m.image_data
+                    data_type, data = extract_image_attributes(img)
+                    push!(tr_content, Dict{String,Any}("type" => "image",
+                        "source" => Dict{String,Any}("type" => "base64", "data" => data, "media_type" => data_type)))
+                end
+                tool_result_content = tr_content
+            else
+                tool_result_content = m.content
+            end
             tool_result = Dict{String,Any}(
                 "type" => "tool_result",
                 "tool_use_id" => m.tool_call_id,
-                "content" => m.content
+                "content" => tool_result_content
             )
             # Group consecutive ToolMessages into one user message (Anthropic requires alternation)
             if !isempty(out) && out[end]["role"] == "user" &&
@@ -277,12 +300,21 @@ function to_gemini_contents(msgs::Vector{AbstractMessage})
                     "response" => Dict{String,Any}("content" => m.content)
                 )
             )
+            # Build image parts if present
+            img_parts = Any[]
+            if m.image_data !== nothing && !isempty(m.image_data)
+                for img in m.image_data
+                    data_type, data = extract_image_attributes(img)
+                    push!(img_parts, Dict{String,Any}("inline_data" => Dict{String,Any}("mime_type" => data_type, "data" => data)))
+                end
+            end
             # Group consecutive ToolMessages into one user message
             if !isempty(out) && out[end]["role"] == "user" &&
                !isempty(out[end]["parts"]) && haskey(out[end]["parts"][end], "functionResponse")
                 push!(out[end]["parts"], part)
+                append!(out[end]["parts"], img_parts)
             else
-                push!(out, Dict("role" => "user", "parts" => Any[part]))
+                push!(out, Dict("role" => "user", "parts" => Any[part; img_parts...]))
             end
             continue
         end
