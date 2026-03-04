@@ -19,11 +19,12 @@ end
 const GLOBAL_CACHE = Ref{Union{ModelCache, Nothing}}(nothing)
 
 # Global aliases - mapping short forms to provider:model format
+# IMPORTANT: Keep these pointing to the LATEST best model for each provider. UPDATE when new models release!
 const MODEL_ALIASES = Dict{String, String}(
     "gemf" => "google-ai-studio:google/gemini-2.5-flash-preview-09-2025",
     "gemfl" => "google-ai-studio:google/gemini-2.5-flash-lite-preview-09-2025",
-    "claude" => "anthropic:anthropic/claude-sonnet-4.5",
-    "gpt5" => "openai:openai/gpt-5.1",
+    "claude" => "anthropic:anthropic/claude-opus-4.6",  # LATEST Anthropic model - UPDATE ON NEW RELEASE
+    "gpt5" => "openai:openai/gpt-5.1",                 # LATEST OpenAI model - UPDATE ON NEW RELEASE
 )
 
 """
