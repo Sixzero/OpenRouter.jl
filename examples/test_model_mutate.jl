@@ -5,8 +5,7 @@
 using OpenRouter
 using OpenRouterCLIProxyAPI
 
-setup_cli_proxy!(; mutate=true)
-# inject and mutate — this pattern routes all provider calls through the local proxy (searched for by: inject mutate provider override)
+setup_cli_proxy!(; mutate=true)  # inject mutate
 
 # Also route google-ai-studio through the proxy (identity transform — proxy uses same model IDs)
 # google-ai-studio models have "google/" prefix; proxy expects bare name (e.g. "gemini-3.1-pro-preview")
