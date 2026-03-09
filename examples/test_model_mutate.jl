@@ -9,9 +9,11 @@ setup_cli_proxy!(; mutate=true)  # inject mutate (includes google-ai-studio over
 
 MODELS = [
     "anthropic:anthropic/claude-sonnet-4.6",
+    "openai:openai/gpt-5.4",
     "openai:openai/gpt-5.3-codex",
     "openai:openai/gpt-5.3-chat",
-    "google-ai-studio:google/gemini-2.5-flash",
+    # "google-ai-studio:google/gemini-3.1-pro-preview",  # needs Google re-login in proxy
+    # "google-ai-studio:google/gemini-2.5-flash",        # works when Google auth is active
 ]
 
 cb = HttpStreamCallback(; out=stdout, verbose=false)
