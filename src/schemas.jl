@@ -462,11 +462,15 @@ function extract_tool_calls(::GeminiSchema, result::Dict)
             for part in candidate["content"]["parts"]
                 fc = get(part, "functionCall", nothing)
                 if !isnothing(fc)
-                    push!(tool_calls, Dict{String,Any}(
+                    tc = Dict{String,Any}(
                         "id" => get(fc, "id", "gemini_$(length(tool_calls))"),
                         "type" => "function",
                         "function" => Dict("name" => fc["name"], "arguments" => JSON3.write(fc["args"]))
-                    ))
+                    )
+                    # Preserve thoughtSignature for Gemini 3.1+ tool roundtrips
+                    ts = get(part, "thoughtSignature", nothing)
+                    !isnothing(ts) && (tc["thoughtSignature"] = ts)
+                    push!(tool_calls, tc)
                 end
             end
             return isempty(tool_calls) ? nothing : tool_calls

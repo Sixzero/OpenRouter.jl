@@ -340,7 +340,11 @@ function to_gemini_contents(msgs::Vector{AbstractMessage})
                 for tc in m.tool_calls
                     fn = tc["function"]
                     args = get_arguments(tc)
-                    push!(parts, Dict{String,Any}("functionCall" => Dict{String,Any}("name" => fn["name"], "args" => args)))
+                    fc_part = Dict{String,Any}("functionCall" => Dict{String,Any}("name" => fn["name"], "args" => args))
+                    # Preserve thoughtSignature for Gemini 3.1+ tool roundtrips
+                    ts = get(tc, "thoughtSignature", nothing)
+                    !isnothing(ts) && (fc_part["thoughtSignature"] = ts)
+                    push!(parts, fc_part)
                 end
             end
             push!(out, Dict("role" => role, "parts" => parts))

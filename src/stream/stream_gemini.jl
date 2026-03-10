@@ -141,7 +141,9 @@ function build_response_body(schema::GeminiSchema, cb::AbstractLLMStream; verbos
                             push!(content_parts, part[:text])
                         end
                     elseif haskey(part, :functionCall)
-                        push!(function_call_parts, Dict(:functionCall => copy(part[:functionCall])))
+                        fc = Dict{Symbol,Any}(:functionCall => copy(part[:functionCall]))
+                        haskey(part, :thoughtSignature) && (fc[:thoughtSignature] = part[:thoughtSignature])
+                        push!(function_call_parts, fc)
                     end
                 end
             end
