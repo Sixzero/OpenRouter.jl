@@ -353,6 +353,15 @@ function build_payload(::GeminiSchema, prompt, model_id::AbstractString, sys_msg
             generation_config[sk] = v
         elseif sk == "tools"
             payload["tools"] = convert_tools(GeminiSchema(), v)
+        elseif sk == "tool_choice"
+            # Translate OpenAI-style tool_choice to Gemini's toolConfig
+            if v == "none"
+                payload["toolConfig"] = Dict("functionCallingConfig" => Dict("mode" => "NONE"))
+            elseif v == "auto"
+                # Gemini default is AUTO — omit
+            elseif v == "required" || v == "any"
+                payload["toolConfig"] = Dict("functionCallingConfig" => Dict("mode" => "ANY"))
+            end
         else
             payload[sk] = v
         end
