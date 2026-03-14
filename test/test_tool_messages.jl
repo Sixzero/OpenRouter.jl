@@ -210,6 +210,33 @@ end
         end
     end
 
+    @testset "Consecutive ToolMessages with images (OpenAI)" begin
+        img1 = "data:image/png;base64,AAAA"
+        img2 = "data:image/png;base64,BBBB"
+        img_msgs = AbstractMessage[
+            UserMessage(content="Read both"),
+            AIMessage(content="", tool_calls=[
+                Dict("id" => "c1", "type" => "function",
+                     "function" => Dict("name" => "read", "arguments" => "{\"path\":\"a.png\"}")),
+                Dict("id" => "c2", "type" => "function",
+                     "function" => Dict("name" => "read", "arguments" => "{\"path\":\"b.png\"}"))]),
+            ToolMessage(content="", tool_call_id="c1", image_data=[img1]),
+            ToolMessage(content="", tool_call_id="c2", image_data=[img2]),
+            AIMessage(content="Done.")
+        ]
+        out = to_openai_messages(img_msgs)
+        # Images must be grouped AFTER all tool results (not between them)
+        # user, assistant, tool(c1), tool(c2), user(2 images), assistant
+        @test length(out) == 6
+        @test out[3]["role"] == "tool" && out[3]["tool_call_id"] == "c1"
+        @test out[4]["role"] == "tool" && out[4]["tool_call_id"] == "c2"
+        @test out[5]["role"] == "user"
+        @test length(out[5]["content"]) == 2
+        @test out[5]["content"][1]["image_url"]["url"] == img1
+        @test out[5]["content"][2]["image_url"]["url"] == img2
+        @test out[6]["role"] == "assistant"
+    end
+
     @testset "AIMessage without tool_calls unchanged" begin
         plain = AbstractMessage[
             UserMessage(content="Hello"),

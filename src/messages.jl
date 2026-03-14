@@ -127,17 +127,22 @@ end
 # OpenAI-style chat: Dict("role"=>"user/assistant/system","content"=>...)
 function to_openai_messages(msgs::Vector{AbstractMessage})
     out = Any[]
-    for m in msgs
+    pending_images = Any[]  # collect images from consecutive ToolMessages
+    for (i, m) in enumerate(msgs)
         # Handle ToolMessage separately (different structure)
         if m isa ToolMessage
             push!(out, Dict("role" => "tool", "tool_call_id" => m.tool_call_id, "content" => m.content))
-            # OpenAI doesn't support images in tool results; inject as a following user message
+            # OpenAI doesn't support images in tool results; defer to after all consecutive tool messages
             if m.image_data !== nothing && !isempty(m.image_data)
-                img_parts = Any[]
                 for img in m.image_data
-                    push!(img_parts, Dict("type" => "image_url", "image_url" => Dict("url" => img)))
+                    push!(pending_images, Dict("type" => "image_url", "image_url" => Dict("url" => img)))
                 end
-                push!(out, Dict("role" => "user", "content" => img_parts))
+            end
+            # Flush pending images when next message is not a ToolMessage
+            next = i < length(msgs) ? msgs[i + 1] : nothing
+            if !(next isa ToolMessage) && !isempty(pending_images)
+                push!(out, Dict("role" => "user", "content" => pending_images))
+                pending_images = Any[]
             end
             continue
         end
