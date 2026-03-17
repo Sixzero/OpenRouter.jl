@@ -212,7 +212,7 @@ Handle error messages from streaming response. Always throws on error.
             string(chunk.data)
         end
         
-        throw("Error detected in streaming response: $(error_str)")
+        error("Error detected in streaming response: $(error_str)")
     end
     return nothing
 end
