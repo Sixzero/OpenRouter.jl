@@ -6,8 +6,9 @@ using JSON3
 # ---------- Configuration ----------
 
 const EXCLUDED_PROVIDERS = Set([
+    "amazon-bedrock",
+    "azure",
     "google",
-    "amazon-bedrock"
 ])
 
 # ---------- Helpers ----------
