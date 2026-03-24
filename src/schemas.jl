@@ -584,21 +584,29 @@ function extract_tokens(::ChatCompletionSchema, result::Union{Dict, JSON3.Object
         prompt_tokens = api_prompt_tokens - input_cache_read  # cache misses only
     end
     
-    # total = cache_miss + cache_hit + completion
+    # Extract reasoning tokens from completion_tokens_details (xAI, OpenAI style)
+    internal_reasoning = 0
+    completion_details = get(usage, "completion_tokens_details", nothing)
+    if completion_details !== nothing
+        internal_reasoning = get(completion_details, "reasoning_tokens", 0)
+    end
+    
+    # total = cache_miss + cache_hit + completion + reasoning
     total_input = prompt_tokens + input_cache_read
-    calculated_total = total_input + completion_tokens
+    calculated_total = total_input + completion_tokens + internal_reasoning
     
     # Validate against reported total
     reported_total = get(usage, "total_tokens", nothing)
     if reported_total !== nothing && reported_total != calculated_total
-        @warn "Token count mismatch" reported_total calculated_total prompt_tokens input_cache_read completion_tokens
+        @warn "Token count mismatch" reported_total calculated_total prompt_tokens input_cache_read completion_tokens internal_reasoning
     end
     
     return TokenCounts(
         prompt_tokens = prompt_tokens,       # cache misses
         completion_tokens = completion_tokens,
         total_tokens = calculated_total,
-        input_cache_read = input_cache_read  # cache hits
+        input_cache_read = input_cache_read, # cache hits
+        internal_reasoning = internal_reasoning
     )
 end
 
