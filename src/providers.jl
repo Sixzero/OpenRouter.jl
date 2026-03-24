@@ -181,7 +181,7 @@ const PROVIDER_INFO = Dict{String,ProviderInfo}(
         nothing,
         ChatCompletionSchema(),
         "OpenAI-compatible API"),
-    "z-ai" => ProviderInfo(
+    "z.ai" => ProviderInfo(
         "https://api.z.ai/api/paas/v4",
         "Bearer",
         "ZAI_API_KEY",
