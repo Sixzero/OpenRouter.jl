@@ -186,7 +186,7 @@ const PROVIDER_INFO = Dict{String,ProviderInfo}(
         "Bearer",
         "ZAI_API_KEY",
         Dict{String,String}(),
-        nothing,
+        zai_model_transform,
         ChatCompletionSchema(),
         "OpenAI-compatible API"),
     "featherless" => ProviderInfo(

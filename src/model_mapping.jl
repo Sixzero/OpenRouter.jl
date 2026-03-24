@@ -263,6 +263,13 @@ function siliconflow_model_transform(model_id::AbstractString)::AbstractString
 end
 
 """
+    zai_model_transform(model_id::String)::String
+
+Transform model IDs for z.ai. Strips the `z-ai/` prefix.
+"""
+zai_model_transform(model_id::AbstractString)::AbstractString = strip_provider_prefix(model_id, "z-ai")
+
+"""
     strip_provider_prefix(model_id::AbstractString, provider::AbstractString)::AbstractString
 
 Remove provider prefix from model ID if present.
