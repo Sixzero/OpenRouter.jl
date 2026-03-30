@@ -614,14 +614,16 @@ function extract_tokens(::ChatCompletionAnthropicSchema, result::Union{Dict, JSO
     usage = get(result, "usage", nothing)
     usage === nothing && return nothing
 
-    # Anthropic-via-proxy: prompt_tokens is already non-cached, cache is additive
-    prompt_tokens = get(usage, "prompt_tokens", 0)
+    # proxy returns OpenAI-style: prompt_tokens = total input (inclusive of cached)
+    api_prompt_tokens = get(usage, "prompt_tokens", 0)
     completion_tokens = get(usage, "completion_tokens", 0)
+
     input_cache_read = 0
     prompt_details = get(usage, "prompt_tokens_details", nothing)
     if prompt_details !== nothing
         input_cache_read = get(prompt_details, "cached_tokens", 0)
     end
+    prompt_tokens = api_prompt_tokens - input_cache_read  # cache misses only
 
     total_tokens = prompt_tokens + input_cache_read + completion_tokens
 
