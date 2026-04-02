@@ -91,6 +91,7 @@ Convert tools to schema-specific format. Supports:
 convert_tools(::AbstractRequestSchema, tools::Nothing) = nothing
 convert_tools(::AbstractRequestSchema, tools::Vector{<:Dict}) = tools  # passthrough
 convert_tools(::AbstractRequestSchema, tools::Dict) = Any[tools]       # passthrough (single tool dict)
+convert_tool_choice(::AbstractRequestSchema, tool_choice) = tool_choice
 
 function convert_tools(schema::AbstractRequestSchema, tools::Vector{Tool})
     [convert_tool(schema, t) for t in tools]
@@ -152,6 +153,20 @@ struct AnthropicSchema <: AbstractRequestSchema
     AnthropicSchema() = new("/v1/messages")
 end
 
+# OpenAI → Anthropic tool_choice translation
+function convert_tool_choice(::AnthropicSchema, tool_choice::AbstractString)
+    tool_choice == "required" && return Dict("type" => "any")
+    tool_choice == "auto"     && return Dict("type" => "auto")
+    return tool_choice
+end
+
+function convert_tool_choice(::AnthropicSchema, tool_choice::AbstractDict)
+    get(tool_choice, "type", nothing) == "function" || return tool_choice
+    name = get(get(tool_choice, "function", Dict()), "name", nothing)
+    isnothing(name) && return tool_choice
+    return Dict("type" => "tool", "name" => name)
+end
+
 # Anthropic format: { name, description, input_schema }
 function convert_tool(::AnthropicSchema, tool::Tool)
     Dict{String,Any}(
@@ -186,11 +201,11 @@ end
 """
 Build the request payload for AnthropicSchema.
 """
-function build_payload(::AnthropicSchema, prompt, model_id::AbstractString, sys_msg,
+function build_payload(schema::AnthropicSchema, prompt, model_id::AbstractString, sys_msg,
                        stream::Bool = false; max_tokens::Int=1000,
                        cache::Union{Nothing,Symbol}=nothing,
                        kwargs...)
-    messages, system_content = build_messages(AnthropicSchema(), prompt, sys_msg; cache)
+    messages, system_content = build_messages(schema, prompt, sys_msg; cache)
     
     payload = Dict{String, Any}(
         "model" => model_id,
@@ -216,7 +231,9 @@ function build_payload(::AnthropicSchema, prompt, model_id::AbstractString, sys_
     for (k, v) in kwargs
         v === nothing && continue
         if k == :tools
-            payload["tools"] = convert_tools(AnthropicSchema(), v)
+            payload["tools"] = convert_tools(schema, v)
+        elseif k == :tool_choice
+            payload["tool_choice"] = convert_tool_choice(schema, v)
         else
             payload[string(k)] = v
         end

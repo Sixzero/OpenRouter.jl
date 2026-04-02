@@ -1,7 +1,7 @@
 using Test
-using OpenRouter: AbstractMessage, SystemMessage, UserMessage, AIMessage, ToolMessage,
+using OpenRouter: AbstractMessage, SystemMessage, UserMessage, AIMessage, ToolMessage, Tool,
     to_openai_messages, to_anthropic_messages, to_gemini_contents
-using OpenRouter: ResponseSchema, build_payload
+using OpenRouter: AnthropicSchema, ResponseSchema, build_payload
 
 # Shared: user → AI calls 2 tools → tool results → AI responds
 function tool_conversation()
@@ -115,6 +115,20 @@ end
         gem = to_gemini_contents(single)
         @test length(gem) == 4
         @test length(gem[3]["parts"]) == 1
+    end
+
+    @testset "Anthropic tool_choice conversion" begin
+        tools = [Tool(name="echo", description="Echo", parameters=Dict("type" => "object", "properties" => Dict()))]
+        p(tc) = build_payload(AnthropicSchema(), "hi", "claude", nothing, false; tools, tool_choice=tc)
+
+        @test p("auto")["tool_choice"]     == Dict("type" => "auto")
+        @test p("required")["tool_choice"] == Dict("type" => "any")
+        # named function → Anthropic tool
+        @test p(Dict("type" => "function", "function" => Dict("name" => "echo")))["tool_choice"] == Dict("type" => "tool", "name" => "echo")
+        # malformed (no name) → passthrough unchanged
+        @test p(Dict("type" => "function", "function" => Dict()))["tool_choice"] == Dict("type" => "function", "function" => Dict())
+        # already-native Anthropic dict → passthrough
+        @test p(Dict("type" => "any"))["tool_choice"] == Dict("type" => "any")
     end
 
     @testset "Anthropic cache with tool results" begin
