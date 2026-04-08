@@ -379,6 +379,8 @@ function build_payload(::GeminiSchema, prompt, model_id::AbstractString, sys_msg
             elseif v == "required" || v == "any"
                 payload["toolConfig"] = Dict("functionCallingConfig" => Dict("mode" => "ANY"))
             end
+        elseif sk == "stream"
+            # Gemini controls streaming via URL, not payload — skip
         else
             payload[sk] = v
         end
