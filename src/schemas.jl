@@ -227,6 +227,9 @@ function build_payload(schema::AnthropicSchema, prompt, model_id::AbstractString
     # Add stream parameter only if true
     stream && (payload["stream"] = true)
     
+    # Models that don't support temperature/top_p
+    no_sampling_params = occursin("claude-opus-4-7", model_id) || occursin("claude-opus-4.7", model_id)
+
     # Add any additional kwargs (convert tools if present)
     for (k, v) in kwargs
         v === nothing && continue
@@ -234,6 +237,14 @@ function build_payload(schema::AnthropicSchema, prompt, model_id::AbstractString
             payload["tools"] = convert_tools(schema, v)
         elseif k == :tool_choice
             payload["tool_choice"] = convert_tool_choice(schema, v)
+        elseif (k == :top_p || k == :temperature) && no_sampling_params
+            continue
+        elseif k == :api_kwargs
+            for (k2, v2) in pairs(v)
+                v2 === nothing && continue
+                (k2 == :top_p || k2 == :temperature) && no_sampling_params && continue
+                payload[string(k2)] = v2
+            end
         else
             payload[string(k)] = v
         end
