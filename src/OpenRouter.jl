@@ -25,7 +25,7 @@ include("precompile.jl")
 
 # Core API functions
 export list_models, list_models_raw, list_providers, list_providers_raw
-export get_model, list_cached_models, search_models
+export get_model, list_cached_models, search_models, update_db
 export aigen, aigen_raw
 export list_provider_endpoints
 export list_native_models, list_endpoints

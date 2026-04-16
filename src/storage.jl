@@ -23,8 +23,8 @@ const GLOBAL_CACHE = Ref{Union{ModelCache, Nothing}}(nothing)
 const MODEL_ALIASES = Dict{String, String}(
     "gemf" => "google-ai-studio:google/gemini-2.5-flash-preview-09-2025",
     "gemfl" => "google-ai-studio:google/gemini-2.5-flash-lite-preview-09-2025",
-    "claude" => "anthropic:anthropic/claude-opus-4.6",  # LATEST Anthropic model - UPDATE ON NEW RELEASE
-    "gpt5" => "openai:openai/gpt-5.1",                 # LATEST OpenAI model - UPDATE ON NEW RELEASE
+    "claude" => "anthropic:anthropic/claude-opus-4.7",  # LATEST Anthropic model - UPDATE ON NEW RELEASE
+    "gpt5" => "openai:openai/gpt-5.4",                 # LATEST OpenAI model - UPDATE ON NEW RELEASE
 )
 
 """
