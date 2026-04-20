@@ -315,14 +315,9 @@ function streamed_request!(cb::HttpStreamHooks, url, headers, input::String; kwa
                     error_body
                 end
                 if response.status == 400
-                    m = match(r"char (\d+)", error_msg)
-                    pos = m === nothing ? 0 : parse(Int, m.captures[1]) + 1
-                    cu = codeunits(input)
-                    lo = max(1, pos - 3000); hi = min(length(cu), pos + 3000)
-                    # Use println to avoid @error's string truncation
-                    println(stderr, "=== API 400 body window (pos=$pos, total=$(length(cu))) ===")
-                    println(stderr, String(cu[lo:hi]))
-                    println(stderr, "=== end body window ===")
+                    println(stderr, "=== API 400 full request body ===")
+                    println(stderr, input)
+                    println(stderr, "=== end body ===")
                 end
                 throw(HTTP.RequestError(response, "API Error ($(response.status)): $error_msg"))
             catch e
