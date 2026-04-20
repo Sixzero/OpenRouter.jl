@@ -183,9 +183,13 @@ function _aigen_core(prompt, provider_info::ProviderInfo, model_id::AbstractStri
     # Branch based on streaming
     if streamcallback === nothing
         # Non-streaming request
-        response = HTTP.post(url, headers, JSON3.write(payload))
+        body = JSON3.write(payload)
+        response = HTTP.post(url, headers, body)
         
-        response.status != 200 && error("API request failed with status $(response.status): $(String(response.body))")
+        if response.status != 200
+            response.status == 400 && @error "API 400: request body snippet" body_snippet=body[1:min(500,end)]
+            error("API request failed with status $(response.status): $(String(response.body))")
+        end
         
         return JSON3.read(response.body, Dict)
     else
@@ -193,9 +197,13 @@ function _aigen_core(prompt, provider_info::ProviderInfo, model_id::AbstractStri
         configure_stream_callback!(streamcallback, protocolSchema, provider_info, provider_endpoint)
 
         # Streaming request
-        response = streamed_request!(streamcallback, url, headers, JSON3.write(payload))
+        body = JSON3.write(payload)
+        response = streamed_request!(streamcallback, url, headers, body)
 
-        response.status != 200 && error("API request failed with status $(response.status): $(String(response.body))")
+        if response.status != 200
+            response.status == 400 && @error "API 400: request body snippet" body_snippet=body[1:min(500,end)]
+            error("API request failed with status $(response.status): $(String(response.body))")
+        end
 
         return JSON3.read(response.body, Dict)
     end

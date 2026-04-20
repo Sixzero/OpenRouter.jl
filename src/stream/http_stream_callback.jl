@@ -60,11 +60,13 @@ function streamed_request!(cb::HttpStreamCallback, url, headers, input::String; 
                 else
                     error_body
                 end
+                response.status == 400 && @error "API 400: request body snippet" body_snippet=input[1:min(500,end)]
                 throw(HTTP.RequestError(response, "Status $(response.status): $error_msg"))
             catch e
                 if e isa HTTP.RequestError
                     rethrow(e)
                 else
+                    response.status == 400 && @error "API 400: request body snippet" body_snippet=input[1:min(500,end)]
                     throw(HTTP.RequestError(response, "Status $(response.status): $error_body"))
                 end
             end
