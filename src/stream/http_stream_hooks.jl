@@ -314,13 +314,22 @@ function streamed_request!(cb::HttpStreamHooks, url, headers, input::String; kwa
                 else
                     error_body
                 end
-                response.status == 400 && @error "API 400: request body snippet" body_snippet=input[max(1,end-3000):end]
+                if response.status == 400
+                    m = match(r"char (\d+)", error_msg)
+                    if m !== nothing
+                        pos = parse(Int, m.captures[1]) + 1
+                        lo = max(1, pos - 300); hi = min(lastindex(input), pos + 300)
+                        @error "API 400: body window around error" pos body_window=input[lo:hi]
+                    else
+                        @error "API 400: request body tail" body_snippet=input[max(1,end-3000):end]
+                    end
+                end
                 throw(HTTP.RequestError(response, "API Error ($(response.status)): $error_msg"))
             catch e
                 if e isa HTTP.RequestError
                     rethrow(e)
                 else
-                    response.status == 400 && @error "API 400: request body snippet" body_snippet=input[max(1,end-3000):end]
+                    response.status == 400 && @error "API 400: request body tail" body_snippet=input[max(1,end-3000):end]
                     throw(HTTP.RequestError(response, "API Error ($(response.status)): $error_body"))
                 end
             end
