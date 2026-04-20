@@ -319,7 +319,10 @@ function streamed_request!(cb::HttpStreamHooks, url, headers, input::String; kwa
                     pos = m === nothing ? 0 : parse(Int, m.captures[1]) + 1
                     cu = codeunits(input)
                     lo = max(1, pos - 3000); hi = min(length(cu), pos + 3000)
-                    @error "API 400: body window" pos total_len=length(cu) window=String(cu[lo:hi])
+                    # Use println to avoid @error's string truncation
+                    println(stderr, "=== API 400 body window (pos=$pos, total=$(length(cu))) ===")
+                    println(stderr, String(cu[lo:hi]))
+                    println(stderr, "=== end body window ===")
                 end
                 throw(HTTP.RequestError(response, "API Error ($(response.status)): $error_msg"))
             catch e
