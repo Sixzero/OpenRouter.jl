@@ -113,27 +113,18 @@ function process_model(m::OpenRouterModel, i::Int, total::Int)
         eps = list_endpoints(m.id)
         all_endpoints = eps.endpoints
 
-        # Filter out endpoints from excluded providers
-        filtered_endpoints = filter(ep -> !should_exclude_endpoint(ep), all_endpoints)
+        # Filter excluded providers, then dedupe by provider_name (keep first)
+        filtered_endpoints = unique(ep -> replace(ep.provider_name, " " => "-"),
+                                    filter(ep -> !should_exclude_endpoint(ep), all_endpoints))
         excluded_count = length(all_endpoints) - length(filtered_endpoints)
 
         if excluded_count > 0
-            println("  Filtered out $excluded_count endpoint(s) from excluded providers")
+            println("  Filtered out $excluded_count endpoint(s) (excluded providers or duplicates)")
         end
 
-        # Deduplicate by provider_name (keep first occurrence)
-        seen_providers = Set{String}()
-        deduped_endpoints = ProviderEndpoint[]
-        for ep in filtered_endpoints
-            key = replace(ep.provider_name, " " => "-")
-            key in seen_providers && continue
-            push!(seen_providers, key)
-            push!(deduped_endpoints, ep)
-        end
-
-        endpoints = deduped_endpoints
+        endpoints = filtered_endpoints
         # Sort endpoints by tag for consistent ordering
-        sorted_endpoints = sort(deduped_endpoints, by=ep -> ep.tag)
+        sorted_endpoints = sort(filtered_endpoints, by=ep -> ep.tag)
         ep_dicts = [endpoint_to_frontend_dict(ep) for ep in sorted_endpoints]
     catch err
         @warn "Failed to fetch endpoints for model" id=m.id exception=(err, catch_backtrace())
