@@ -137,7 +137,7 @@ const PROVIDER_INFO = Dict{String,ProviderInfo}(
         "Bearer",
         "DEEPINFRA_API_KEY",
         Dict{String,String}(),
-        nothing,
+        siliconflow_model_transform,  # DeepInfra uses same cased IDs as SiliconFlow
         ChatCompletionSchema(),
         "OpenAI-compatible API"),
     "hyperbolic" => ProviderInfo(

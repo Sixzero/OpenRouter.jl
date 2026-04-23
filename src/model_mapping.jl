@@ -248,6 +248,8 @@ const SILICONFLOW_MODEL_MAP = Dict{String,String}(
 
     "moonshotai/kimi-k2-0905" => "moonshotai/Kimi-K2-Instruct-0905",
     "moonshotai/kimi-k2-thinking" => "moonshotai/Kimi-K2-Thinking",
+    "moonshotai/kimi-k2.5" => "moonshotai/Kimi-K2.5",
+    "moonshotai/kimi-k2.6" => "moonshotai/Kimi-K2.6",
     "moonshotai/kimi-dev-72b" => "moonshotai/Kimi-Dev-72B",
 
     "tencent/hunyuan-a13b-instruct" => "tencent/Hunyuan-A13B-Instruct",
