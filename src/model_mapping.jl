@@ -172,10 +172,11 @@ end
 """
     moonshotai_model_transform(model_id::String)::String
 
-Transform model IDs for MoonshotAI. Currently returns unchanged.
+Transform model IDs for MoonshotAI. Strips the "moonshotai/" prefix since
+the native API at api.moonshot.ai expects bare IDs (e.g. "kimi-k2.6").
 """
 function moonshotai_model_transform(model_id::AbstractString)::AbstractString
-    return model_id
+    return startswith(model_id, "moonshotai/") ? model_id[length("moonshotai/")+1:end] : model_id
 end
 
 """
