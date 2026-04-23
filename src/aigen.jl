@@ -177,8 +177,9 @@ function _aigen_core(prompt, provider_info::ProviderInfo, model_id::AbstractStri
     # Build headers
     headers = build_headers(provider_info, api_key)
     
-    # Build URL using schema
-    url = build_url(protocolSchema, provider_info.base_url, model_id, stream_flag)
+    # Build URL using schema (resolve env-var placeholders like <account_id>)
+    base_url = resolve_base_url(provider_info.base_url)
+    url = build_url(protocolSchema, base_url, model_id, stream_flag)
     
     # Branch based on streaming
     if streamcallback === nothing

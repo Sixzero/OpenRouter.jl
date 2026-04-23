@@ -222,6 +222,16 @@ const PROVIDER_INFO = Dict{String,ProviderInfo}(
         ChatCompletionSchema(),
         "OpenAI-compatible API"),
 
+    # Cloudflare Workers AI; base URL is account-specific (requires CLOUDFLARE_ACCOUNT_ID)
+    "cloudflare" => ProviderInfo(
+        "https://api.cloudflare.com/client/v4/accounts/<account_id>/ai/v1",
+        "Bearer",
+        "CLOUDFLARE_API_TOKEN",
+        Dict{String,String}(),
+        cloudflare_model_transform,
+        ChatCompletionSchema(),
+        "Requires CLOUDFLARE_ACCOUNT_ID in base URL; models use @cf/ prefix"),
+
     # Azure is special; host is resource-dependent
     "azure" => ProviderInfo(
         "https://<resource>.openai.azure.com",
@@ -370,6 +380,24 @@ end
 function get_provider_base_url(provider_slug::AbstractString)::Union{String,Nothing}
     info = get_provider_info(provider_slug)
     return info === nothing ? nothing : info.base_url
+end
+
+const BASE_URL_ENV_PLACEHOLDERS = Dict(
+    "<account_id>" => "CLOUDFLARE_ACCOUNT_ID",
+    "<resource>"   => "AZURE_OPENAI_HOST",
+)
+
+"""Resolve env-var placeholders (e.g. `<account_id>`) in a base URL. No-op for URLs without `<`."""
+function resolve_base_url(base_url::AbstractString)::String
+    '<' in base_url || return string(base_url)
+    url = string(base_url)
+    for (placeholder, env_var) in BASE_URL_ENV_PLACEHOLDERS
+        contains(url, placeholder) || continue
+        val = get(ENV, env_var, "")
+        isempty(val) && throw(ArgumentError("Environment variable $env_var is required (for placeholder $placeholder in base URL)"))
+        url = replace(url, placeholder => val)
+    end
+    return url
 end
 
 "Build an auth header pair (name => value) for a provider + API key, or `nothing` if provider is unknown."

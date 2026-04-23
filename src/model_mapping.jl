@@ -273,6 +273,17 @@ Transform model IDs for z.ai. Strips the `z-ai/` prefix.
 zai_model_transform(model_id::AbstractString)::AbstractString = strip_provider_prefix(model_id, "z-ai")
 
 """
+    cloudflare_model_transform(model_id::String)::String
+
+Transform OpenRouter model IDs to Cloudflare Workers AI format.
+Prepends `@cf/` to the model ID (e.g. `moonshotai/kimi-k2.6` → `@cf/moonshotai/kimi-k2.6`).
+"""
+function cloudflare_model_transform(model_id::AbstractString)::AbstractString
+    startswith(model_id, "@cf/") && return model_id
+    return "@cf/" * model_id
+end
+
+"""
     strip_provider_prefix(model_id::AbstractString, provider::AbstractString)::AbstractString
 
 Remove provider prefix from model ID if present.
