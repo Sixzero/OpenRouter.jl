@@ -64,12 +64,20 @@ function build_payload(::ChatCompletionSchema, prompt, model_id::AbstractString,
     
     # Add stream parameter only if true
     stream && (payload["stream"] = true)
-    
+
+    # Moonshot's kimi-k2.6 rejects any temperature != 1.0 and any top_p != 0.95.
+    # Drop them silently-with-warning so existing call sites keep working.
+    # Case-insensitive: model_id can arrive as "kimi-k2.6", "Kimi-K2.6", or prefixed.
+    drop_sampling = occursin("kimi-k2.6", lowercase(model_id))
+
     # Add any additional kwargs (convert tools if present)
     for (k, v) in kwargs
         if k == :tools
             v === nothing && continue
             payload["tools"] = convert_tools(ChatCompletionSchema(), v)
+        elseif (k == :top_p || k == :temperature) && drop_sampling
+            @warn "Dropping `$k` for $model_id (only fixed value allowed by provider)." maxlog=1
+            continue
         else
             payload[string(k)] = v
         end
@@ -182,20 +190,14 @@ Build messages array for AnthropicSchema.
 Returns a tuple: (messages, system_content)
 """
 function build_messages(::AnthropicSchema, prompt, sys_msg; cache::Union{Nothing,Symbol}=nothing)
-    normalized = normalize_messages(prompt, sys_msg)
-
-    # Extract first SystemMessage content, if any
-    system_content = nothing
-    for m in normalized
-        if m isa SystemMessage
-            system_content = m.content
-            break
-        end
+    normalized = normalize_messages(prompt, nothing)
+    # Prefer explicit sys_msg kwarg; fall back to first SystemMessage embedded in prompt.
+    system_content = sys_msg
+    if system_content === nothing
+        idx = findfirst(m -> m isa SystemMessage, normalized)
+        idx === nothing || (system_content = normalized[idx].content)
     end
-
-    # Convert all messages; SystemMessages are ignored by to_anthropic_messages
-    msgs = to_anthropic_messages(normalized; cache)
-    return msgs, system_content
+    return to_anthropic_messages(normalized; cache), system_content
 end
 
 """
@@ -226,9 +228,10 @@ function build_payload(schema::AnthropicSchema, prompt, model_id::AbstractString
     
     # Add stream parameter only if true
     stream && (payload["stream"] = true)
-    
-    # Models that don't support temperature/top_p
-    no_sampling_params = occursin("claude-opus-4-7", model_id) || occursin("claude-opus-4.7", model_id)
+
+    # Claude Opus 4.7 deprecated `temperature` and `top_p` (API returns 400 if sent).
+    # We drop them silently-with-warning so existing call sites keep working.
+    drop_sampling = occursin("claude-opus-4-7", model_id) || occursin("claude-opus-4.7", model_id)
 
     # Add any additional kwargs (convert tools if present)
     for (k, v) in kwargs
@@ -237,12 +240,16 @@ function build_payload(schema::AnthropicSchema, prompt, model_id::AbstractString
             payload["tools"] = convert_tools(schema, v)
         elseif k == :tool_choice
             payload["tool_choice"] = convert_tool_choice(schema, v)
-        elseif (k == :top_p || k == :temperature) && no_sampling_params
+        elseif (k == :top_p || k == :temperature) && drop_sampling
+            @warn "Dropping `$k` for $model_id (deprecated for this model)." maxlog=1
             continue
         elseif k == :api_kwargs
             for (k2, v2) in pairs(v)
                 v2 === nothing && continue
-                (k2 == :top_p || k2 == :temperature) && no_sampling_params && continue
+                if (k2 == :top_p || k2 == :temperature) && drop_sampling
+                    @warn "Dropping `$k2` for $model_id (deprecated for this model)." maxlog=1
+                    continue
+                end
                 payload[string(k2)] = v2
             end
         else
