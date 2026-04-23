@@ -179,8 +179,8 @@ function to_openai_messages(msgs::Vector{AbstractMessage})
                 isempty(m.content) && (msg_dict["content"] = nothing)
             end
             # Always include reasoning_content on assistant messages: thinking models
-            # like kimi-k2.6 require it even when empty (especially on tool call msgs).
-            msg_dict["reasoning_content"] = m.reasoning !== nothing ? m.reasoning : ""
+            # like kimi-k2.6 require non-empty reasoning_content (especially on tool call msgs).
+            msg_dict["reasoning_content"] = m.reasoning !== nothing && !isempty(m.reasoning) ? m.reasoning : "."
         end
 
         push!(out, msg_dict)
