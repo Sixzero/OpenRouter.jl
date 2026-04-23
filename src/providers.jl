@@ -358,7 +358,12 @@ Get the provider info for a given slug, or `nothing` if unknown.
 """
 function get_provider_info(provider_slug_or_alias::AbstractString)::Union{ProviderInfo,Nothing}
     provider_slug = resolve_model_alias(provider_slug_or_alias)
-    return get(PROVIDER_INFO, lowercase(provider_slug), nothing)
+    slug = lowercase(provider_slug)
+    info = get(PROVIDER_INFO, slug, nothing)
+    # Fallback: try hyphenless form (e.g. "moonshot-ai" -> "moonshotai") to handle
+    # OpenRouter's inconsistent provider_name casing/hyphenation across models.
+    info === nothing && (info = get(PROVIDER_INFO, replace(slug, "-" => ""), nothing))
+    return info
 end
 
 "Get just the base URL for a provider slug, or `nothing` if unknown."

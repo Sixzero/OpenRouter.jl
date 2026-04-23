@@ -209,14 +209,17 @@ function _aigen_core(prompt, provider_info::ProviderInfo, model_id::AbstractStri
     end
 end
 
-# Match endpoint by slug. Needed because provider_name can have spaces ("Moonshot AI")
-# and tags can be suffixed ("moonshotai/int4"), so plain equality on either fails.
+# Match endpoint by slug. Needed because provider_name can have spaces ("Moonshot AI"),
+# hyphens ("Moonshot-AI"), and tags can be suffixed ("moonshotai/int4"), so plain
+# equality fails. We normalize by stripping spaces and hyphens.
+_norm_slug(s::AbstractString) = replace(replace(lowercase(s), " " => ""), "-" => "")
 function endpoint_matches_provider(endpoint, provider_lower::AbstractString)::Bool
-    lowercase(endpoint.provider_name) == provider_lower && return true
+    pnorm = _norm_slug(provider_lower)
+    _norm_slug(endpoint.provider_name) == pnorm && return true
     tag = endpoint.tag
     tag == provider_lower && return true
-    plen = ncodeunits(provider_lower)
-    return ncodeunits(tag) > plen && codeunit(tag, plen + 1) == 0x2f && startswith(tag, provider_lower)
+    tag_slug = _norm_slug(split(tag, "/")[1])
+    return tag_slug == pnorm
 end
 
 # Parse "Provider:author/model_id" into (ProviderInfo, "transformed_model_id", ProviderEndpoint)
