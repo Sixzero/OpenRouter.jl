@@ -191,6 +191,9 @@ end
 # Anthropic-style: role + content=[{type="text", text=...}, ...]
 to_anthropic_content(x) = isa(x, AbstractString) ? Any[Dict{String, Any}("type" => "text", "text" => x)] : x
 
+# Anthropic requires tool IDs to match ^[a-zA-Z0-9_-]+$ — sanitize IDs from other providers
+sanitize_anthropic_tool_id(id::AbstractString) = replace(id, r"[^a-zA-Z0-9_-]" => "_")
+
 function to_anthropic_messages(msgs::Vector{AbstractMessage}; cache::Union{Nothing,Symbol}=nothing)
     out = Any[]
     for m in msgs
@@ -215,7 +218,7 @@ function to_anthropic_messages(msgs::Vector{AbstractMessage}; cache::Union{Nothi
             end
             tool_result = Dict{String,Any}(
                 "type" => "tool_result",
-                "tool_use_id" => m.tool_call_id,
+                "tool_use_id" => sanitize_anthropic_tool_id(m.tool_call_id),
                 "content" => tool_result_content
             )
             # Group consecutive ToolMessages into one user message (Anthropic requires alternation)
@@ -261,7 +264,7 @@ function to_anthropic_messages(msgs::Vector{AbstractMessage}; cache::Union{Nothi
                 args = get_arguments(tc)
                 push!(content, Dict{String,Any}(
                     "type" => "tool_use",
-                    "id" => tc["id"],
+                    "id" => sanitize_anthropic_tool_id(tc["id"]),
                     "name" => fn["name"],
                     "input" => args
                 ))

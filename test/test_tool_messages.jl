@@ -1,7 +1,7 @@
 using Test
 using OpenRouter: AbstractMessage, SystemMessage, UserMessage, AIMessage, ToolMessage, Tool,
     to_openai_messages, to_anthropic_messages, to_gemini_contents
-using OpenRouter: AnthropicSchema, ResponseSchema, build_payload
+using OpenRouter: AnthropicSchema, ResponseSchema, build_payload, sanitize_anthropic_tool_id
 
 # Shared: user → AI calls 2 tools → tool results → AI responds
 function tool_conversation()
@@ -263,5 +263,30 @@ end
         gem = to_gemini_contents(plain)
         @test length(gem) == 2
         @test gem[2]["parts"] == Any[Dict("text" => "Hi there!")]
+    end
+
+    @testset "Cross-provider tool ID sanitization for Anthropic" begin
+        # DeepSeek/OpenAI can produce IDs with dots or other chars invalid for Anthropic
+        @test sanitize_anthropic_tool_id("call_abc123") == "call_abc123"
+        @test sanitize_anthropic_tool_id("call_0.get_date") == "call_0_get_date"
+        @test sanitize_anthropic_tool_id("call:with:colons") == "call_with_colons"
+
+        # Full roundtrip: conversation with dotted IDs serializes cleanly for Anthropic
+        dotted_msgs = AbstractMessage[
+            UserMessage(content="What's the date?"),
+            AIMessage(content="", tool_calls=[
+                Dict("id" => "call_0.get_date", "type" => "function",
+                     "function" => Dict("name" => "get_date", "arguments" => "{}"))]),
+            ToolMessage(content="2025-01-15", tool_call_id="call_0.get_date", name="get_date"),
+            AIMessage(content="The date is 2025-01-15.")
+        ]
+        out = to_anthropic_messages(dotted_msgs)
+        # tool_use block ID must be sanitized
+        @test out[2]["content"][1]["id"] == "call_0_get_date"
+        # tool_result tool_use_id must match
+        @test out[3]["content"][1]["tool_use_id"] == "call_0_get_date"
+        # Both must match the Anthropic pattern (no chars outside [a-zA-Z0-9_-])
+        @test !occursin(r"[^a-zA-Z0-9_-]", out[2]["content"][1]["id"])
+        @test !occursin(r"[^a-zA-Z0-9_-]", out[3]["content"][1]["tool_use_id"])
     end
 end
