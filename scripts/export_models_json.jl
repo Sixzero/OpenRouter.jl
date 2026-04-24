@@ -8,6 +8,7 @@ using JSON3
 const EXCLUDED_PROVIDERS = Set([
     "amazon-bedrock",
     "azure",
+    "cloudflare",
     "google",
 ])
 

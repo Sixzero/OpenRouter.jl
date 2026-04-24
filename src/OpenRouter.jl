@@ -29,9 +29,10 @@ export get_model, list_cached_models, search_models, update_db
 export aigen, aigen_raw
 export list_provider_endpoints
 export list_native_models, list_endpoints
+export list_embeddings_models, list_embeddings_models_raw
 
 # Types
-export OpenRouterModel, Pricing, Architecture, ProviderEndpoint, ModelProviders, CachedModel, ModelCache
+export OpenRouterModel, OpenRouterEmbeddingModel, Pricing, Architecture, ProviderEndpoint, ModelProviders, CachedModel, ModelCache
 export ModelConfig, GeminiConfig
 
 # Streaming types

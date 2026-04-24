@@ -139,7 +139,11 @@ const DEEPSEEK_MODEL_MAP = Dict{String,String}(
 
 function deepseek_model_transform(model_id::AbstractString)::AbstractString
     key = lowercase(model_id)
-    return get(DEEPSEEK_MODEL_MAP, key, model_id)
+    mapped = get(DEEPSEEK_MODEL_MAP, key, nothing)
+    mapped !== nothing && return mapped
+    # Strip deepseek/ prefix for native API (e.g. deepseek/deepseek-v4-pro -> deepseek-v4-pro)
+    startswith(key, "deepseek/") && return key[(length("deepseek/")+1):end]
+    return model_id
 end
 
 """
