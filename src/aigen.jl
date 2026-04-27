@@ -230,7 +230,13 @@ function parse_provider_model(provider_model::AbstractString)
     
     provider_name = parts[1]
     model_id = parts[2]
-    
+
+    # Strip thinking/budget suffix `(...)` for lookup; re-append to transformed id.
+    # E.g. "anthropic/claude-opus-4.7(high)" -> lookup "anthropic/claude-opus-4.7", suffix "(high)".
+    suffix_m = match(r"^(.*?)(\([^()]*\))$", model_id)
+    lookup_model_id = suffix_m === nothing ? model_id : suffix_m.captures[1]
+    model_suffix    = suffix_m === nothing ? "" : suffix_m.captures[2]
+
     # Get provider info
     provider_info = get_provider_info(lowercase(provider_name))
     provider_info === nothing && throw(ArgumentError("Unknown provider: $provider_name. Available: $(join(sort(list_known_providers()), ", "))"))
@@ -239,24 +245,24 @@ function parse_provider_model(provider_model::AbstractString)
 
     # Early return for echo providers - skip model lookup entirely (avoids network during precompile)
     if startswith(lc_name, "echo")
-        transformed_model_id = transform_model_name(provider_info, model_id)
-        return provider_info, transformed_model_id, create_stub_endpoint(provider_name, model_id)
+        transformed_model_id = transform_model_name(provider_info, lookup_model_id) * model_suffix
+        return provider_info, transformed_model_id, create_stub_endpoint(provider_name, lookup_model_id)
     end
 
     # Get the cached model with endpoints
-    cached_model = get_model(model_id; fetch_endpoints=true)
+    cached_model = get_model(lookup_model_id; fetch_endpoints=true)
     if cached_model === nothing
         # Special handling for local providers (e.g. Ollama) that don't have OpenRouter metadata
         if lc_name == "ollama"
-            transformed_model_id = transform_model_name(provider_info, model_id)
-            return provider_info, transformed_model_id, create_stub_endpoint_zero_pricing(provider_name, model_id)
+            transformed_model_id = transform_model_name(provider_info, lookup_model_id) * model_suffix
+            return provider_info, transformed_model_id, create_stub_endpoint_zero_pricing(provider_name, lookup_model_id)
         end
-        
+
         # For other providers, this is an error - show helpful message
         available_models = list_models(lowercase(provider_name))
         model_ids = [m.id for m in available_models]
         hint = "\nHint: Available models for $provider_name: $(join(model_ids, ", "))"
-        throw(ArgumentError("Model not found: $model_id. Use update_db() to refresh the model database.$hint"))
+        throw(ArgumentError("Model not found: $lookup_model_id. Use update_db() to refresh the model database.$hint"))
     end
     
     provider_lower = lowercase(provider_name)
@@ -272,7 +278,7 @@ function parse_provider_model(provider_model::AbstractString)
     end
     
     if provider_endpoint === nothing
-        throw(ArgumentError("Provider $provider_name does not host model $model_id. Available providers: $(join([ep.provider_name for ep in cached_model.endpoints.endpoints], ", "))"))
+        throw(ArgumentError("Provider $provider_name does not host model $lookup_model_id. Available providers: $(join([ep.provider_name for ep in cached_model.endpoints.endpoints], ", "))"))
     end
     
     # Handle endpoint override (tag contains ">original>override_provider")
@@ -281,9 +287,9 @@ function parse_provider_model(provider_model::AbstractString)
         provider_info = get_provider_info(override_provider)
     end
 
-    # Transform model name according to provider rules (this now handles prefix removal internally)
-    transformed_model_id = transform_model_name(provider_info, model_id)
-    
+    # Transform model name according to provider rules; re-append thinking suffix for the proxy.
+    transformed_model_id = transform_model_name(provider_info, lookup_model_id) * model_suffix
+
     return provider_info, transformed_model_id, provider_endpoint
 end
 
