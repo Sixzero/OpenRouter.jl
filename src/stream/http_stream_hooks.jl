@@ -262,25 +262,35 @@ function callback(cb::HttpStreamHooks, chunk::StreamChunk; kwargs...)
     # Mark stream as done
     is_done(cb.schema, chunk; kwargs...) && (cb.is_done_flag = true)
 
-    # Trigger on_meta_ai once after stream is done
-    if cb.is_done_flag && !cb.ai_meta_triggered
-        cb.ai_meta_triggered = true
-        
-        # Reset color if still in reasoning mode
-        if cb.in_reasoning_mode
-            print(cb.out, "$(RESET_COLOR)")
-            cb.in_reasoning_mode = false
-        end
-        
-        cost = !isnothing(cb.provider_endpoint) ? something(calculate_cost(cb.provider_endpoint, cb.acc_tokens), 0.0) : 0.0
-        elapsed = get_total_elapsed(cb.run_info)
-        msg = cb.on_meta_ai(cb.acc_tokens, cost, elapsed !== nothing ? elapsed : 0.0)
-        isa(msg, AbstractString) && println(cb.out, msg)
+    cb.is_done_flag && finalize_stream!(cb)
 
-        msg = cb.on_done()
-        isa(msg, AbstractString) && println(cb.out, msg)
+    return nothing
+end
+
+"""
+    finalize_stream!(cb::HttpStreamHooks)
+
+Idempotently fire `on_meta_ai` + `on_done` exactly once. Called both from the
+per-chunk callback (when a done-marker is seen) and from `streamed_request!`
+on EOF (for streams that end without an explicit done-marker).
+"""
+function finalize_stream!(cb::HttpStreamHooks)
+    cb.ai_meta_triggered && return nothing
+    cb.ai_meta_triggered = true
+    cb.is_done_flag = true
+
+    if cb.in_reasoning_mode
+        print(cb.out, "$(RESET_COLOR)")
+        cb.in_reasoning_mode = false
     end
 
+    cost = !isnothing(cb.provider_endpoint) ? something(calculate_cost(cb.provider_endpoint, cb.acc_tokens), 0.0) : 0.0
+    elapsed = get_total_elapsed(cb.run_info)
+    msg = cb.on_meta_ai(cb.acc_tokens, cost, elapsed !== nothing ? elapsed : 0.0)
+    isa(msg, AbstractString) && println(cb.out, msg)
+
+    msg = cb.on_done()
+    isa(msg, AbstractString) && println(cb.out, msg)
     return nothing
 end
 
@@ -364,6 +374,10 @@ function streamed_request!(cb::HttpStreamHooks, url, headers, input::String; kwa
         end
         HTTP.closeread(stream)
     end
+
+    # Ensure on_meta_ai fires even if stream ended without a done-marker
+    # (provider never sent [DONE] or a trailing usage chunk).
+    finalize_stream!(cb)
 
     # Aesthetic newline for stdout
     cb.out == stdout && (println(); flush(stdout))

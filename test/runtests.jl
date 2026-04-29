@@ -99,6 +99,42 @@ using Aqua
         @test isapprox(cost, 1000*0.000002 + 500*0.000004 + 200*0.000001 + 100*0.0000015; atol=1e-10)
     end
 
+    @testset "ChatCompletion stream payload" begin
+        # When stream=true, opt into usage stats so providers like Moonshot's
+        # kimi-k2.6 emit a trailing usage chunk during streaming.
+        p_stream = OpenRouter.build_payload(ChatCompletionSchema(), "hi", "any-model", nothing, true)
+        @test p_stream["stream"] === true
+        @test p_stream["stream_options"] == Dict("include_usage" => true)
+
+        # When stream=false, no stream_options are added.
+        p_nostream = OpenRouter.build_payload(ChatCompletionSchema(), "hi", "any-model", nothing, false)
+        @test !haskey(p_nostream, "stream")
+        @test !haskey(p_nostream, "stream_options")
+    end
+
+    @testset "ChatCompletion is_done semantics" begin
+        using OpenRouter: is_done, StreamChunk
+        import JSON3
+        sch = ChatCompletionSchema()
+
+        mkchunk(d) = StreamChunk(data=JSON3.write(d), json=JSON3.read(JSON3.write(d)))
+
+        # finish_reason alone (no usage) → not done; trailing usage chunk still expected.
+        @test !is_done(sch, mkchunk(Dict("choices" => [Dict("finish_reason" => "stop", "delta" => Dict())])))
+
+        # Trailing usage-only chunk (empty choices, has usage) → done.
+        @test is_done(sch, mkchunk(Dict("choices" => [], "usage" => Dict("prompt_tokens" => 5, "completion_tokens" => 3, "total_tokens" => 8))))
+
+        # usage + finish_reason on same chunk (DeepSeek style) → done.
+        @test is_done(sch, mkchunk(Dict("choices" => [Dict("finish_reason" => "stop", "delta" => Dict())], "usage" => Dict("prompt_tokens" => 5, "completion_tokens" => 3, "total_tokens" => 8))))
+
+        # [DONE] sentinel → done.
+        @test is_done(sch, StreamChunk(data="[DONE]", json=nothing))
+
+        # Mid-stream content chunk → not done.
+        @test !is_done(sch, mkchunk(Dict("choices" => [Dict("delta" => Dict("content" => "x"))])))
+    end
+
     # Include custom provider tests
     include("test_custom_providers.jl")
 

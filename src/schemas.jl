@@ -62,8 +62,13 @@ function build_payload(::ChatCompletionSchema, prompt, model_id::AbstractString,
         "messages" => messages
     )
     
-    # Add stream parameter only if true
-    stream && (payload["stream"] = true)
+    # Add stream parameter only if true. Also opt into usage stats — many
+    # OpenAI-compatible providers (e.g. Moonshot's kimi-k2.6) omit `usage`
+    # in streaming unless `stream_options.include_usage` is explicitly set.
+    if stream
+        payload["stream"] = true
+        payload["stream_options"] = Dict("include_usage" => true)
+    end
 
     # Moonshot's kimi-k2.6 only accepts temperature=1.0 and top_p=0.95. Clamp to
     # those fixed values so callers don't need to special-case this model.

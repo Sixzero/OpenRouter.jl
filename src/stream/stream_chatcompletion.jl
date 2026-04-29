@@ -30,18 +30,16 @@ Check if streaming is done for ChatCompletion format.
 Checks for finish_reason in choices or [DONE] marker.
 """
 @inline function is_done(schema::ChatCompletionSchema, chunk::AbstractStreamChunk; kwargs...)
-    # Check for [DONE] marker
+    # Check for [DONE] marker (true end-of-stream for OpenAI-compat providers)
     chunk.data == "[DONE]" && return true
 
-    # Check for finish_reason in choices
-    if !isnothing(chunk.json)
+    # A trailing usage-only chunk (empty choices, has usage) also ends the stream
+    # when `stream_options.include_usage=true` — providers emit it after finish_reason.
+    if !isnothing(chunk.json) && get(chunk.json, :usage, nothing) !== nothing
         choices = get(chunk.json, :choices, [])
-        if !isempty(choices)
-            first_choice = choices[1]
-            finish_reason = get(first_choice, :finish_reason, nothing)
-            # Any non-nothing finish_reason means we're done
-            return !isnothing(finish_reason)
-        end
+        isempty(choices) && return true
+        # Some providers (e.g. DeepSeek) include usage on the same chunk as finish_reason.
+        !isnothing(get(choices[1], :finish_reason, nothing)) && return true
     end
 
     return false
