@@ -15,7 +15,7 @@ MODELS = [
     # Thinking levels via CLIProxyAPI suffix syntax model(level)
     "anthropic:anthropic/claude-opus-4.6(high)",
     "anthropic:anthropic/claude-opus-4.7(high)",
-    # "anthropic:anthropic/claude-opus-4.7(xhigh)",  # needs proxy binary update
+    "anthropic:anthropic/claude-opus-4.7(xhigh)",
     "openai:openai/gpt-5.4(high)",
     # "openai:openai/gpt-5.3-codex",
     # "openai:openai/gpt-5.3-chat",                      # not in proxy
