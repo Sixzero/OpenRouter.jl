@@ -238,8 +238,12 @@ function build_payload(schema::AnthropicSchema, prompt, model_id::AbstractString
     stream && (payload["stream"] = true)
 
     # Claude Opus 4.7 deprecated `temperature` and `top_p` (API returns 400 if sent).
+    # Also: when extended thinking is enabled (suffix like `(high)`, `(xhigh)`),
+    # Anthropic requires `top_p` >= 0.95 or unset, and `temperature` must be default.
     # We drop them silently-with-warning so existing call sites keep working.
-    drop_sampling = occursin("claude-opus-4-7", model_id) || occursin("claude-opus-4.7", model_id)
+    drop_sampling = occursin("claude-opus-4-7", model_id) ||
+                    occursin("claude-opus-4.7", model_id) ||
+                    occursin(r"\([^()]+\)$", model_id)
 
     # Add any additional kwargs (convert tools if present)
     for (k, v) in kwargs
