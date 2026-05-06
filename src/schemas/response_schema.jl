@@ -64,9 +64,17 @@ function build_payload(schema::ResponseSchema, prompt, model_id::AbstractString,
 end
 
 # Convert message types to Response API input format (all return Vector for uniform flattening)
-message_to_response_input(msg::UserMessage) = [Dict(
-    "type" => "message", "role" => "user", "content" => msg.content
-)]
+function message_to_response_input(msg::UserMessage)
+    if msg.image_data !== nothing && !isempty(msg.image_data)
+        content = Any[]
+        !isempty(msg.content) && push!(content, Dict{String,Any}("type" => "input_text", "text" => msg.content))
+        for img in msg.image_data
+            push!(content, Dict{String,Any}("type" => "input_image", "image_url" => img))
+        end
+        return [Dict("type" => "message", "role" => "user", "content" => content)]
+    end
+    [Dict("type" => "message", "role" => "user", "content" => msg.content)]
+end
 
 function message_to_response_input(msg::AIMessage)
     items = Any[]

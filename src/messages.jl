@@ -209,6 +209,10 @@ function to_anthropic_messages(msgs::Vector{AbstractMessage}; cache::Union{Nothi
                 !isempty(m.content) && push!(tr_content, Dict{String,Any}("type" => "text", "text" => m.content))
                 for img in m.image_data
                     data_type, data = extract_image_attributes(img)
+                    if data_type ∉ ("image/jpeg", "image/png", "image/gif", "image/webp")
+                        @warn "Skipping unsupported image type for Anthropic API" data_type
+                        continue
+                    end
                     push!(tr_content, Dict{String,Any}("type" => "image",
                         "source" => Dict{String,Any}("type" => "base64", "data" => data, "media_type" => data_type)))
                 end
@@ -242,7 +246,10 @@ function to_anthropic_messages(msgs::Vector{AbstractMessage}; cache::Union{Nothi
             !isempty(m.content) && push!(content, Dict{String, Any}("type" => "text", "text" => m.content))
             for img in m.image_data
                 data_type, data = extract_image_attributes(img)
-                @assert data_type in ["image/jpeg", "image/png", "image/gif", "image/webp"] "Unsupported image type: $data_type"
+                if data_type ∉ ("image/jpeg", "image/png", "image/gif", "image/webp")
+                    @warn "Skipping unsupported image type for Anthropic API" data_type
+                    continue
+                end
                 push!(content, Dict("type" => "image",
                     "source" => Dict("type" => "base64",
                         "data" => data,
