@@ -105,22 +105,36 @@ function normalize_messages(prompt, sys_msg)
 end
 
 # Helper to extract image attributes from data URL
-function extract_image_attributes(img::AbstractString)
+const LLM_SUPPORTED_IMAGE_MIMES = Set(["image/jpeg", "image/png", "image/gif", "image/webp"])
+
+"""Extract and validate image from data URL. Returns (media_type, base64_data) or nothing if invalid/unsupported.
+Lightweight: only decodes first 12 bytes for magic-byte validation."""
+function extract_image_attributes(img::AbstractString)::Union{Tuple{String,String}, Nothing}
     if startswith(img, "data:")
-        # Format: "data:image/jpeg;base64,<base64data>"
         parts = split(img, ",", limit=2)
         if length(parts) == 2
-            header = parts[1]
-            data = parts[2]
-            # Extract media type from header
-            media_match = match(r"data:([^;]+)", header)
+            media_match = match(r"data:([^;]+)", parts[1])
             media_type = media_match !== nothing ? media_match.captures[1] : "image/jpeg"
-            return media_type, data
+            data = parts[2]
+        else
+            @warn "Invalid image: malformed data URL"
+            return nothing
         end
+    else
+        media_type, data = "image/jpeg", img
     end
-    # Assume it's raw base64 data, default to jpeg
-    return "image/jpeg", img
+    media_type ∉ LLM_SUPPORTED_IMAGE_MIMES && (@warn "Invalid image: unsupported type" media_type; return nothing)
+    length(data) < 8 && (@warn "Invalid image: base64 data too short" media_type size=length(data); return nothing)
+    raw = try; base64decode(data[1:min(16, length(data))]) catch; UInt8[] end
+    length(raw) >= 3 && raw[1] == 0xFF && raw[2] == 0xD8 && raw[3] == 0xFF && return (media_type, data)  # JPEG
+    length(raw) >= 4 && raw[1] == 0x89 && raw[2] == 0x50 && raw[3] == 0x4E && raw[4] == 0x47 && return (media_type, data)  # PNG
+    length(raw) >= 3 && raw[1] == 0x47 && raw[2] == 0x49 && raw[3] == 0x46 && return (media_type, data)  # GIF
+    length(raw) >= 12 && raw[1] == 0x52 && raw[9] == 0x57 && raw[10] == 0x45 && raw[11] == 0x42 && raw[12] == 0x50 && return (media_type, data)  # WEBP
+    @warn "Invalid image: bad magic bytes" media_type size=length(data)
+    return nothing
 end
+
+const INVALID_IMAGE_NOTICE = "[Invalid image removed: corrupt or unsupported format]"
 
 # === Converters for specific providers ===
 
@@ -135,7 +149,11 @@ function to_openai_messages(msgs::Vector{AbstractMessage})
             # OpenAI doesn't support images in tool results; defer to after all consecutive tool messages
             if m.image_data !== nothing && !isempty(m.image_data)
                 for img in m.image_data
-                    push!(pending_images, Dict("type" => "image_url", "image_url" => Dict("url" => img)))
+                    if isnothing(extract_image_attributes(img))
+                        push!(pending_images, Dict("type" => "text", "text" => INVALID_IMAGE_NOTICE))
+                    else
+                        push!(pending_images, Dict("type" => "image_url", "image_url" => Dict("url" => img)))
+                    end
                 end
             end
             # Flush pending images when next message is not a ToolMessage
@@ -160,7 +178,11 @@ function to_openai_messages(msgs::Vector{AbstractMessage})
             content = Any[]
             !isempty(m.content) && push!(content, Dict("type" => "text", "text" => m.content))
             for img in m.image_data
-                push!(content, Dict("type" => "image_url", "image_url" => Dict("url" => img)))
+                if isnothing(extract_image_attributes(img))
+                    push!(content, Dict("type" => "text", "text" => INVALID_IMAGE_NOTICE))
+                else
+                    push!(content, Dict("type" => "image_url", "image_url" => Dict("url" => img)))
+                end
             end
             msg_dict["content"] = content
         else
@@ -208,13 +230,14 @@ function to_anthropic_messages(msgs::Vector{AbstractMessage}; cache::Union{Nothi
                 tr_content = Any[]
                 !isempty(m.content) && push!(tr_content, Dict{String,Any}("type" => "text", "text" => m.content))
                 for img in m.image_data
-                    data_type, data = extract_image_attributes(img)
-                    if data_type ∉ ("image/jpeg", "image/png", "image/gif", "image/webp")
-                        @warn "Skipping unsupported image type for Anthropic API" data_type
-                        continue
+                    result = extract_image_attributes(img)
+                    if isnothing(result)
+                        push!(tr_content, Dict{String,Any}("type" => "text", "text" => INVALID_IMAGE_NOTICE))
+                    else
+                        data_type, data = result
+                        push!(tr_content, Dict{String,Any}("type" => "image",
+                            "source" => Dict{String,Any}("type" => "base64", "data" => data, "media_type" => data_type)))
                     end
-                    push!(tr_content, Dict{String,Any}("type" => "image",
-                        "source" => Dict{String,Any}("type" => "base64", "data" => data, "media_type" => data_type)))
                 end
                 tool_result_content = tr_content
             else
@@ -245,15 +268,16 @@ function to_anthropic_messages(msgs::Vector{AbstractMessage}; cache::Union{Nothi
             content = Any[]
             !isempty(m.content) && push!(content, Dict{String, Any}("type" => "text", "text" => m.content))
             for img in m.image_data
-                data_type, data = extract_image_attributes(img)
-                if data_type ∉ ("image/jpeg", "image/png", "image/gif", "image/webp")
-                    @warn "Skipping unsupported image type for Anthropic API" data_type
-                    continue
+                result = extract_image_attributes(img)
+                if isnothing(result)
+                    push!(content, Dict{String,Any}("type" => "text", "text" => INVALID_IMAGE_NOTICE))
+                else
+                    data_type, data = result
+                    push!(content, Dict("type" => "image",
+                        "source" => Dict("type" => "base64",
+                            "data" => data,
+                            "media_type" => data_type)))
                 end
-                push!(content, Dict("type" => "image",
-                    "source" => Dict("type" => "base64",
-                        "data" => data,
-                        "media_type" => data_type)))
             end
         else
             content = to_anthropic_content(m.content)
@@ -323,8 +347,13 @@ function to_gemini_contents(msgs::Vector{AbstractMessage})
             img_parts = Any[]
             if m.image_data !== nothing && !isempty(m.image_data)
                 for img in m.image_data
-                    data_type, data = extract_image_attributes(img)
-                    push!(img_parts, Dict{String,Any}("inline_data" => Dict{String,Any}("mime_type" => data_type, "data" => data)))
+                    result = extract_image_attributes(img)
+                    if isnothing(result)
+                        push!(img_parts, Dict{String,Any}("text" => INVALID_IMAGE_NOTICE))
+                    else
+                        data_type, data = result
+                        push!(img_parts, Dict{String,Any}("inline_data" => Dict{String,Any}("mime_type" => data_type, "data" => data)))
+                    end
                 end
             end
             # Group consecutive ToolMessages into one user message
@@ -346,8 +375,13 @@ function to_gemini_contents(msgs::Vector{AbstractMessage})
             parts = Any[]
             !isempty(m.content) && push!(parts, Dict("text" => m.content))
             for img in m.image_data
-                data_type, data = extract_image_attributes(img)
-                push!(parts, Dict("inline_data" => Dict("mime_type" => data_type, "data" => data)))
+                result = extract_image_attributes(img)
+                if isnothing(result)
+                    push!(parts, Dict("text" => INVALID_IMAGE_NOTICE))
+                else
+                    data_type, data = result
+                    push!(parts, Dict("inline_data" => Dict("mime_type" => data_type, "data" => data)))
+                end
             end
             push!(out, Dict("role" => role, "parts" => parts))
         elseif isa(m.content, AbstractString)

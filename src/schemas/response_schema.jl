@@ -69,7 +69,11 @@ function message_to_response_input(msg::UserMessage)
         content = Any[]
         !isempty(msg.content) && push!(content, Dict{String,Any}("type" => "input_text", "text" => msg.content))
         for img in msg.image_data
-            push!(content, Dict{String,Any}("type" => "input_image", "image_url" => img))
+            if isnothing(extract_image_attributes(img))
+                push!(content, Dict{String,Any}("type" => "input_text", "text" => INVALID_IMAGE_NOTICE))
+            else
+                push!(content, Dict{String,Any}("type" => "input_image", "image_url" => img))
+            end
         end
         return [Dict("type" => "message", "role" => "user", "content" => content)]
     end
@@ -99,7 +103,11 @@ function message_to_response_input(msg::ToolMessage)
     if msg.image_data !== nothing && !isempty(msg.image_data)
         img_content = Any[]
         for img in msg.image_data
-            push!(img_content, Dict{String,Any}("type" => "input_image", "image_url" => img))
+            if isnothing(extract_image_attributes(img))
+                push!(img_content, Dict{String,Any}("type" => "input_text", "text" => INVALID_IMAGE_NOTICE))
+            else
+                push!(img_content, Dict{String,Any}("type" => "input_image", "image_url" => img))
+            end
         end
         push!(items, Dict{String,Any}("type" => "message", "role" => "user", "content" => img_content))
     end

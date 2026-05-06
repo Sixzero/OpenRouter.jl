@@ -1,5 +1,7 @@
 module OpenRouter
 
+using Base64: base64decode
+
 include("types.jl")
 include("stream_interface.jl")
 include("api.jl")
