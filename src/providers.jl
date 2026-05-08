@@ -491,14 +491,9 @@ function calculate_cost(endpoint::ProviderEndpoint, tokens::Union{Nothing,Dict})
         @warn "No pricing available on endpoint; cannot calculate cost." endpoint=endpoint tokens=tokens
         return nothing
     end
-
     cost = calculate_cost(endpoint.pricing, tokens)
-
-    if cost === nothing
-        @warn "Pricing present but resulted in zero/undefined cost; check pricing fields and tokens." endpoint=endpoint tokens=tokens
-    end
-
-    return cost
+    cost === nothing && (@warn "Pricing present but resulted in zero/undefined cost; check pricing fields and tokens." endpoint=endpoint tokens=tokens; return cost)
+    return cost * (1.0 - min(promo_discount(endpoint.name), 0.99))
 end
 
 """

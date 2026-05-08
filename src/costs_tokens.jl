@@ -27,6 +27,18 @@ function from_dict(dict::Dict)
     )
 end
 
+using Dates: Date, today
+
+# Active promos: (slug_pattern, fraction_off, start, end). Update when promos change.
+const PROMOS = [
+    (r"opus-4\.7"i,  0.4, Date(2026, 5, 1), Date(2026, 5, 31)),
+    (r"haiku"i,      0.4, Date(2026, 5, 1), Date(2026, 5, 31)),
+    (r"gpt-5\.5"i,   0.4, Date(2026, 2, 2), Date(2026, 5, 31)),
+]
+
+promo_discount(name::AbstractString, on::Date=today()) =
+    sum((d for (pat, d, s, e) in PROMOS if s <= on <= e && occursin(pat, name)); init=0.0)
+
 # Cost calculation using existing Pricing struct and parse_price function
 parse_price(x) = x === nothing ? 0.0 :
                  x isa Real ? float(x) :
@@ -75,11 +87,6 @@ function calculate_cost(endpoint::ProviderEndpoint, tokens::Union{Nothing,TokenC
     end
 
     cost = calculate_cost(endpoint.pricing, tokens)
-
-    if cost === nothing
-        # warn even in non verbose mode, this cannot go silent
-        @warn "Pricing present but resulted in zero/undefined cost; check pricing fields and tokens." endpoint=endpoint tokens=tokens
-    end
-
-    return cost
+    cost === nothing && (@warn "Pricing present but resulted in zero/undefined cost; check pricing fields and tokens." endpoint=endpoint tokens=tokens; return cost)
+    return cost * (1.0 - min(promo_discount(endpoint.name), 0.99))
 end
