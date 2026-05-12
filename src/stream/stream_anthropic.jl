@@ -76,6 +76,8 @@ function build_response_body(schema::AnthropicSchema, cb::AbstractLLMStream; ver
     content_buf = IOBuffer()
     # Accumulate tool_use blocks: index => Dict with :id, :name, :input_json (string)
     tool_blocks = Dict{Int, Dict{Symbol, Any}}()
+    # Accumulate thinking blocks: index => IOBuffer of :thinking deltas
+    thinking_blocks = Dict{Int, IOBuffer}()
     current_block_index = -1
     current_block_type = nothing
 
@@ -114,6 +116,11 @@ function build_response_body(schema::AnthropicSchema, cb::AbstractLLMStream; ver
                     :name => get(content_block, :name, ""),
                     :input_json => IOBuffer()
                 )
+            elseif current_block_type == "thinking"
+                buf = IOBuffer()
+                initial = get(content_block, :thinking, "")
+                !isempty(initial) && write(buf, initial)
+                thinking_blocks[current_block_index] = buf
             end
         end
 
@@ -129,6 +136,11 @@ function build_response_body(schema::AnthropicSchema, cb::AbstractLLMStream; ver
                 if !isnothing(partial) && haskey(tool_blocks, current_block_index)
                     write(tool_blocks[current_block_index][:input_json], partial)
                 end
+            elseif delta_type == "thinking_delta"
+                t = get(delta, :thinking, nothing)
+                if !isnothing(t) && haskey(thinking_blocks, current_block_index)
+                    write(thinking_blocks[current_block_index], t)
+                end
             end
         end
     end
@@ -136,8 +148,13 @@ function build_response_body(schema::AnthropicSchema, cb::AbstractLLMStream; ver
     if !isnothing(response)
         response isa JSON3.Object && (response = copy(response))
 
-        # Build content array with text and tool_use blocks
+        # Build content array with thinking, text, and tool_use blocks (preserve order: thinking first)
         content = Any[]
+
+        for idx in sort(collect(keys(thinking_blocks)))
+            push!(content, Dict(:type => "thinking", :thinking => String(take!(thinking_blocks[idx]))))
+        end
+
         text_content = String(take!(content_buf))
         !isempty(text_content) && push!(content, Dict(:type => "text", :text => text_content))
 
