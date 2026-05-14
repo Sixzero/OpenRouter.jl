@@ -302,6 +302,15 @@ function to_anthropic_messages(msgs::Vector{AbstractMessage}; cache::Union{Nothi
             end
         end
 
+        # Anthropic rejects empty text blocks ("messages: text content blocks must be non-empty").
+        # Replace any empty text with a placeholder so role alternation is preserved.
+        for blk in content
+            if blk isa Dict && get(blk, "type", "") == "text" && isempty(get(blk, "text", ""))
+                @warn "Empty text block in $role message; substituting placeholder (likely truncated/interrupted upstream)"
+                blk["text"] = "(empty)"
+            end
+        end
+
         push!(out, Dict("role" => role, "content" => content))
     end
 
