@@ -640,9 +640,9 @@ function extract_tokens(::ChatCompletionSchema, result::Union{Dict, JSON3.Object
         internal_reasoning = get(completion_details, "reasoning_tokens", 0)
     end
     
-    # total = cache_miss + cache_hit + completion + reasoning
+    # total = cache_miss + cache_hit + completion (reasoning_tokens already included in completion_tokens)
     total_input = prompt_tokens + input_cache_read
-    calculated_total = total_input + completion_tokens + internal_reasoning
+    calculated_total = total_input + completion_tokens
     
     # Validate against reported total
     reported_total = get(usage, "total_tokens", nothing)
