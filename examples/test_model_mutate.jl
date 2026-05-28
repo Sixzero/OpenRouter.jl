@@ -16,6 +16,11 @@ MODELS = [
     "anthropic:anthropic/claude-opus-4.6(high)",
     "anthropic:anthropic/claude-opus-4.7(high)",
     "anthropic:anthropic/claude-opus-4.7(xhigh)",
+    "anthropic:anthropic/claude-opus-4.8(low)",
+    "anthropic:anthropic/claude-opus-4.8(medium)",
+    "anthropic:anthropic/claude-opus-4.8(high)",
+    "anthropic:anthropic/claude-opus-4.8(xhigh)",
+    "anthropic:anthropic/claude-opus-4.8(max)",
     "openai:openai/gpt-5.4(high)",
     # "openai:openai/gpt-5.3-codex",
     # "openai:openai/gpt-5.3-chat",                      # not in proxy
