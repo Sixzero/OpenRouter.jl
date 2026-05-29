@@ -29,6 +29,7 @@ const PROVIDER_INFO = Dict{String,ProviderInfo}(
     "openrouter" => openrouter_gateway("OpenRouter gateway"),
     "crucible"   => openrouter_gateway("OpenRouter-only upstream (Crucible); routed via openrouter.ai"),
     "stealth"    => openrouter_gateway("OpenRouter cloaked/stealth upstream; routed via openrouter.ai"),
+    "poolside"   => openrouter_gateway("Poolside (laguna) upstream; routed via openrouter.ai"),
 
     # OpenAI-compatible / OpenAI-style providers
     "openai" => ProviderInfo(
