@@ -106,7 +106,8 @@ end
 
 # Helper to extract image attributes from data URL
 const LLM_SUPPORTED_IMAGE_MIMES = Set(["image/jpeg", "image/png", "image/gif", "image/webp"])
-const LLM_MAX_IMAGE_BASE64_BYTES = 5_242_880  # Anthropic's 5MB limit on the base64 string itself
+# Cap on base64 string length (~3.75MB decoded); stays safely under Anthropic's 5MB decoded-image limit.
+const LLM_MAX_IMAGE_BASE64_BYTES = 5_242_880
 
 """Extract and validate image from data URL. Returns (media_type, base64_data) or nothing if invalid/unsupported.
 Lightweight: only decodes first 12 bytes for magic-byte validation."""
