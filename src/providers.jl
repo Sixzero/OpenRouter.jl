@@ -28,6 +28,7 @@ const PROVIDER_INFO = Dict{String,ProviderInfo}(
     # OpenRouter gateway providers: OpenAI-compatible, model id passed through as author/model[:variant].
     "openrouter" => openrouter_gateway("OpenRouter gateway"),
     "crucible"   => openrouter_gateway("OpenRouter-only upstream (Crucible); routed via openrouter.ai"),
+    "stealth"    => openrouter_gateway("OpenRouter cloaked/stealth upstream; routed via openrouter.ai"),
 
     # OpenAI-compatible / OpenAI-style providers
     "openai" => ProviderInfo(
