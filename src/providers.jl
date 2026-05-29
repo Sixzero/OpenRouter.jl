@@ -14,7 +14,21 @@ mutable struct ProviderInfo
     notes::String
 end
 
+# OpenRouter gateway base URL. Providers pointing here (openrouter, crucible, ...) route
+# requests through openrouter.ai and skip native endpoint metadata matching (see parse_provider_model).
+const OPENROUTER_GATEWAY_URL = "https://openrouter.ai/api/v1"
+
+# Build an OpenRouter-gateway ProviderInfo. `crucible` etc. are OpenRouter-only upstreams
+# exposed as their own provider slug; the full model id (incl. `:free`) is passed through.
+openrouter_gateway(notes::String) = ProviderInfo(
+    OPENROUTER_GATEWAY_URL, "Bearer", "OPENROUTER_API_KEY",
+    Dict{String,String}(), nothing, ChatCompletionSchema(), notes)
+
 const PROVIDER_INFO = Dict{String,ProviderInfo}(
+    # OpenRouter gateway providers: OpenAI-compatible, model id passed through as author/model[:variant].
+    "openrouter" => openrouter_gateway("OpenRouter gateway"),
+    "crucible"   => openrouter_gateway("OpenRouter-only upstream (Crucible); routed via openrouter.ai"),
+
     # OpenAI-compatible / OpenAI-style providers
     "openai" => ProviderInfo(
         "https://api.openai.com/v1",

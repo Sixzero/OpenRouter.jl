@@ -35,7 +35,7 @@ function aigen_raw(prompt, provider_model::String;
     
     # Resolve alias to full provider:model format
     resolved_model = resolve_model_alias(provider_model)
-    
+
     provider_info, model_id, provider_endpoint = parse_provider_model(resolved_model)
     
     # Record start time for elapsed calculation
@@ -245,6 +245,14 @@ function parse_provider_model(provider_model::AbstractString)
 
     # Early return for echo providers - skip model lookup entirely (avoids network during precompile)
     if startswith(lc_name, "echo")
+        transformed_model_id = transform_model_name(provider_info, lookup_model_id) * model_suffix
+        return provider_info, transformed_model_id, create_stub_endpoint(provider_name, lookup_model_id)
+    end
+
+    # OpenRouter gateway providers (openrouter, crucible, ...): pass the full model id
+    # through (incl. `:free`/variant suffixes) and skip endpoint metadata matching -
+    # OpenRouter handles upstream provider routing itself.
+    if provider_info.base_url == OPENROUTER_GATEWAY_URL
         transformed_model_id = transform_model_name(provider_info, lookup_model_id) * model_suffix
         return provider_info, transformed_model_id, create_stub_endpoint(provider_name, lookup_model_id)
     end
