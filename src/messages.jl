@@ -106,6 +106,7 @@ end
 
 # Helper to extract image attributes from data URL
 const LLM_SUPPORTED_IMAGE_MIMES = Set(["image/jpeg", "image/png", "image/gif", "image/webp"])
+const LLM_MAX_IMAGE_BASE64_BYTES = 5_242_880  # Anthropic's 5MB limit on the base64 string itself
 
 """Extract and validate image from data URL. Returns (media_type, base64_data) or nothing if invalid/unsupported.
 Lightweight: only decodes first 12 bytes for magic-byte validation."""
@@ -125,6 +126,7 @@ function extract_image_attributes(img::AbstractString)::Union{Tuple{String,Strin
     end
     media_type ∉ LLM_SUPPORTED_IMAGE_MIMES && (@warn "Invalid image: unsupported type" media_type; return nothing)
     length(data) < 8 && (@warn "Invalid image: base64 data too short" media_type size=length(data); return nothing)
+    length(data) > LLM_MAX_IMAGE_BASE64_BYTES && (@warn "Invalid image: exceeds 5MB base64 limit" media_type size=length(data); return nothing)
     raw = try; base64decode(data[1:min(16, length(data))]) catch; UInt8[] end
     length(raw) >= 3 && raw[1] == 0xFF && raw[2] == 0xD8 && raw[3] == 0xFF && return (media_type, data)  # JPEG
     length(raw) >= 4 && raw[1] == 0x89 && raw[2] == 0x50 && raw[3] == 0x4E && raw[4] == 0x47 && return (media_type, data)  # PNG
