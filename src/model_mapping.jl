@@ -111,19 +111,24 @@ end
 """
     mistral_model_transform(model_id::String)::String
 
-Transform model IDs for Mistral. Currently returns unchanged.
+Transform OpenRouter ids to native Mistral API ids by stripping the `mistralai/`
+prefix (e.g. "mistralai/ministral-8b-2512" -> "ministral-8b-2512").
 """
 function mistral_model_transform(model_id::AbstractString)::AbstractString
+    startswith(lowercase(model_id), "mistralai/") && return model_id[(length("mistralai/")+1):end]
     return model_id
 end
 
 """
     fireworks_model_transform(model_id::String)::String
 
-Transform model IDs for Fireworks. Currently returns unchanged.
+Transform OpenRouter ids to native Fireworks ids, which are namespaced under
+`accounts/fireworks/models/` (e.g. "openai/gpt-oss-120b" ->
+"accounts/fireworks/models/gpt-oss-120b"). Already-namespaced ids pass through.
 """
 function fireworks_model_transform(model_id::AbstractString)::AbstractString
-    return model_id
+    startswith(model_id, "accounts/") && return model_id
+    return "accounts/fireworks/models/" * last(split(model_id, "/"))
 end
 
 """
