@@ -14,6 +14,11 @@
 #   3. cache_read > 0 → still alive (HIT); cache_read == 0 → expired (MISS).
 #      TTL lies between the largest HIT age and the smallest MISS age.
 #
+# Measured result (claude-haiku-4.5, 2026-05-29):
+#   Default ephemeral TTL ≈ 5 min (300s). A coarse sweep gave HIT @5:01, MISS @5:31;
+#   a 5s-resolution sweep narrowed it to HIT @5:07, MISS @5:15 — i.e. expiry ~300s,
+#   the few seconds of slack being request round-trip latency on top of the seed time.
+#
 # Usage:
 #   julia --project=. test/paid/bench_cache_ttl.jl
 #
