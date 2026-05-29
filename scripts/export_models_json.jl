@@ -12,6 +12,14 @@ const EXCLUDED_PROVIDERS = Set([
     "google",
 ])
 
+# (provider, model_id) combos that OpenRouter advertises but that are not actually
+# reachable on that provider's endpoint (model id mismatch, not on account, etc.).
+# Provider is matched normalized (lowercase, spaces->hyphens); model_id lowercased.
+const EXCLUDED_ENDPOINTS = Set([
+    ("cerebras", "qwen/qwen3-32b"),
+    ("together", "meta-llama/llama-4-scout"),
+])
+
 # ---------- Helpers ----------
 
 "Convert an OpenRouter Pricing struct into a Dict with numeric fields."
@@ -116,7 +124,7 @@ function process_model(m::OpenRouterModel, i::Int, total::Int)
 
         # Filter excluded providers, then dedupe by provider_name (keep first)
         filtered_endpoints = unique(ep -> replace(ep.provider_name, " " => "-"),
-                                    filter(ep -> !should_exclude_endpoint(ep), all_endpoints))
+                                    filter(ep -> !should_exclude_endpoint(ep, m.id), all_endpoints))
         excluded_count = length(all_endpoints) - length(filtered_endpoints)
 
         if excluded_count > 0
