@@ -230,7 +230,7 @@ const PROVIDER_INFO = Dict{String,ProviderInfo}(
         ChatCompletionSchema(),
         "OpenAI-compatible API"),
     "chutes" => ProviderInfo(
-        "https://api.chutes.ai/v1",
+        "https://llm.chutes.ai/v1",
         "Bearer",
         "CHUTES_API_KEY",
         Dict{String,String}(),
