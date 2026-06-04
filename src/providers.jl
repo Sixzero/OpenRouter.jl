@@ -120,6 +120,14 @@ const PROVIDER_INFO = Dict{String,ProviderInfo}(
         minimax_model_transform,
         ChatCompletionSchema(),
         "Uses custom endpoint paths for different model types"),
+    "xiaomi" => ProviderInfo(
+        "https://api.xiaomimimo.com/v1",
+        "Bearer",
+        "MIMO_API_KEY",
+        Dict{String,String}(),
+        xiaomi_model_transform,
+        ChatCompletionSchema(),
+        "Xiaomi MiMo native API; OpenAI-compatible, bare model IDs"),
 
     # Anthropic-style, Cohere, Google AI Studio, etc.
     "anthropic" => ProviderInfo(
@@ -498,19 +506,7 @@ function extract_provider_from_model(model_name::String)
     return "openai"
 end
 
-"""
-Calculate cost for a given endpoint and token usage.
-Unwraps `.pricing`. Warns if cost cannot be determined (e.g. missing pricing).
-"""
-function calculate_cost(endpoint::ProviderEndpoint, tokens::Union{Nothing,Dict})
-    if endpoint.pricing === nothing
-        @warn "No pricing available on endpoint; cannot calculate cost." endpoint=endpoint tokens=tokens
-        return nothing
-    end
-    cost = calculate_cost(endpoint.pricing, tokens)
-    cost === nothing && (@warn "Pricing present but resulted in zero/undefined cost; check pricing fields and tokens." endpoint=endpoint tokens=tokens; return cost)
-    return cost * (1.0 - min(promo_discount(endpoint.name), 0.99))
-end
+
 
 """
 Get the appropriate schema for a provider info and model.

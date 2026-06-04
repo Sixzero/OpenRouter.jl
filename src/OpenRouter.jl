@@ -29,6 +29,7 @@ include("precompile.jl")
 export list_models, list_models_raw, list_providers, list_providers_raw
 export get_model, list_cached_models, search_models, update_db
 export aigen, aigen_raw
+export calculate_cost, COST_DISCOUNT_FN
 export list_provider_endpoints
 export list_native_models, list_endpoints
 export list_embeddings_models, list_embeddings_models_raw

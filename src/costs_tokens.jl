@@ -27,17 +27,10 @@ function from_dict(dict::Dict)
     )
 end
 
-using Dates: Date, today
-
-# Active promos: (slug_pattern, fraction_off, start, end). Update when promos change.
-const PROMOS = [
-    (r"opus-4\.7"i,  0.4, Date(2026, 5, 1), Date(2026, 5, 31)),
-    (r"haiku"i,      0.4, Date(2026, 5, 1), Date(2026, 5, 31)),
-    (r"gpt-5\.5"i,   0.4, Date(2026, 2, 2), Date(2026, 5, 31)),
-]
-
-promo_discount(name::AbstractString, on::Date=today()) =
-    sum((d for (pat, d, s, e) in PROMOS if s <= on <= e && occursin(pat, name)); init=0.0)
+# Cost discount resolver, keyed by endpoint name → fraction off (0.0–1.0).
+# The library ships no promos: apps register their own table, e.g.
+#   OpenRouter.COST_DISCOUNT_FN[] = name -> ...
+const COST_DISCOUNT_FN = Ref{Function}(_ -> 0.0)
 
 # Cost calculation using existing Pricing struct and parse_price function
 parse_price(x) = x === nothing ? 0.0 :
@@ -80,7 +73,8 @@ end
 Calculate cost for a given endpoint and token usage.
 Unwraps `.pricing`. Warns if cost cannot be determined (e.g. missing pricing).
 """
-function calculate_cost(endpoint::ProviderEndpoint, tokens::Union{Nothing,TokenCounts,Dict}, verbose::Bool=false)
+function calculate_cost(endpoint::ProviderEndpoint, tokens::Union{Nothing,TokenCounts,Dict}, verbose::Bool=false;
+                        discount::Float64=COST_DISCOUNT_FN[](endpoint.name))
     if endpoint.pricing === nothing
         verbose && @warn "No pricing available on endpoint; cannot calculate cost." endpoint=endpoint tokens=tokens
         return nothing
@@ -88,5 +82,5 @@ function calculate_cost(endpoint::ProviderEndpoint, tokens::Union{Nothing,TokenC
 
     cost = calculate_cost(endpoint.pricing, tokens)
     cost === nothing && (@warn "Pricing present but resulted in zero/undefined cost; check pricing fields and tokens." endpoint=endpoint tokens=tokens; return cost)
-    return cost * (1.0 - min(promo_discount(endpoint.name), 0.99))
+    return cost * (1.0 - min(discount, 0.99))
 end
