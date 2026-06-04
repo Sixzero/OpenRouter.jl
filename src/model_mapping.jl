@@ -198,6 +198,16 @@ function minimax_model_transform(model_id::AbstractString)::AbstractString
 end
 
 """
+    xiaomi_model_transform(model_id::String)::String
+
+Transform model IDs for Xiaomi MiMo. Strips the "xiaomi/" prefix since
+the native API expects bare IDs.
+"""
+function xiaomi_model_transform(model_id::AbstractString)::AbstractString
+    return startswith(model_id, "xiaomi/") ? model_id[length("xiaomi/")+1:end] : model_id
+end
+
+"""
     ollama_model_transform(model_id::String)::String
 
 Transform model IDs for Ollama. Currently returns unchanged.
