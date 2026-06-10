@@ -101,11 +101,14 @@ function pick_primary_prices(endpoints::Vector{ProviderEndpoint})
 end
 
 """
-Check if an endpoint should be excluded based on its provider.
+Check if an endpoint should be excluded based on its provider, or because the
+(provider, model_id) combo is listed in EXCLUDED_ENDPOINTS.
 """
-function should_exclude_endpoint(ep::ProviderEndpoint)
+function should_exclude_endpoint(ep::ProviderEndpoint, model_id::AbstractString)
     provider_normalized = lowercase(replace(ep.provider_name, " " => "-"))
-    return provider_normalized in EXCLUDED_PROVIDERS || startswith(provider_normalized, "echo_")
+    provider_normalized in EXCLUDED_PROVIDERS && return true
+    startswith(provider_normalized, "echo_") && return true
+    return (provider_normalized, lowercase(model_id)) in EXCLUDED_ENDPOINTS
 end
 
 """
