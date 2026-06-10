@@ -237,13 +237,14 @@ function build_payload(schema::AnthropicSchema, prompt, model_id::AbstractString
     # Add stream parameter only if true
     stream && (payload["stream"] = true)
 
-    # Claude Opus 4.7+ deprecated `temperature` and `top_p` (API returns 400 if sent).
-    # Assumed to apply to all Opus versions >= 4.7 going forward.
+    # Claude Opus 4.7+ and Fable deprecated `temperature` and `top_p` (API returns 400 if sent).
+    # Assumed to apply to all Opus versions >= 4.7 and the Fable line going forward.
     # Also: when extended thinking is enabled (suffix like `(high)`, `(xhigh)`),
     # Anthropic requires `top_p` >= 0.95 or unset, and `temperature` must be default.
     # We drop them silently-with-warning so existing call sites keep working.
     opus_minor = match(r"claude-opus-4[-.](\d+)"i, model_id)
     drop_sampling = (opus_minor !== nothing && parse(Int, opus_minor.captures[1]) >= 7) ||
+                    occursin(r"claude-fable"i, model_id) ||
                     occursin(r"\([^()]+\)$", model_id)
 
     # Add any additional kwargs (convert tools if present)

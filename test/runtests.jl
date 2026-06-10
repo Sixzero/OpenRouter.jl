@@ -135,6 +135,22 @@ using Aqua
         @test !is_done(sch, mkchunk(Dict("choices" => [Dict("delta" => Dict("content" => "x"))])))
     end
 
+    @testset "Anthropic drops deprecated sampling params" begin
+        using OpenRouter: AnthropicSchema, build_payload
+        drops(m) = let p = build_payload(AnthropicSchema(), "hi", m, nothing; top_p=0.9, temperature=0.7, max_tokens=10)
+            !haskey(p, "top_p") && !haskey(p, "temperature")
+        end
+        # Opus >= 4.7 and Fable deprecated `top_p`/`temperature` (API 400 otherwise).
+        @test drops("anthropic/claude-opus-4.7")
+        @test drops("anthropic/claude-opus-4.8")
+        @test drops("anthropic/claude-fable-5")
+        # Thinking suffix also forces a drop on any model.
+        @test drops("anthropic/claude-sonnet-4.6(xhigh)")
+        # Older models keep them.
+        @test !drops("anthropic/claude-opus-4.6")
+        @test !drops("anthropic/claude-sonnet-4.6")
+    end
+
     # Include custom provider tests
     include("test_custom_providers.jl")
 
