@@ -174,6 +174,15 @@ function build_models_data()
     specs = [r[1] for r in results]
     excluded_endpoints_count = sum(r[2] for r in results)
 
+    # Drop models with no reachable endpoints (e.g. ~latest aliases, fully
+    # excluded-provider models) — they can't be routed, so don't ship them.
+    dropped = filter(d -> isempty(d["endpoints"]), specs)
+    if !isempty(dropped)
+        println("\nDropping $(length(dropped)) model(s) with no endpoints:")
+        foreach(d -> println("  - $(d["id"])"), dropped)
+    end
+    filter!(d -> !isempty(d["endpoints"]), specs)
+
     println("\nTotal excluded endpoints: $excluded_endpoints_count")
 
     # Sort models alphabetically by id for consistent ordering
