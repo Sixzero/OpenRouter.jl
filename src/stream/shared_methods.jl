@@ -217,6 +217,36 @@ Handle error messages from streaming response. Always throws on error.
     return nothing
 end
 
+"Extract a human-readable error message from an API error body (JSON `error`/`message`, else raw)."
+function stream_error_message(body::AbstractString)
+    isempty(strip(body)) && return "<empty response body>"
+    try
+        json = JSON3.read(body)
+        if haskey(json, :error)
+            detail = json.error
+            return detail isa AbstractDict ? string(get(detail, :message, detail)) : string(detail)
+        end
+        haskey(json, :message) && return string(json.message)
+    catch
+    end
+    return body
+end
+
+"""
+    throw_stream_http_error(response, stream, input)
+
+Read an error response body and throw a descriptive `HTTP.RequestError`. Called for any
+`status >= 400` *before* the event-stream content-type check, so providers that return an
+error with a missing or non-stream Content-Type (e.g. z.ai 429) surface the real message
+instead of a misleading content-type assertion failure.
+"""
+function throw_stream_http_error(response, stream, input::AbstractString)
+    body = String(read(stream))
+    HTTP.closeread(stream)
+    response.status == 400 && @error "API 400: request body snippet" body_snippet=input[1:min(500,end)]
+    throw(HTTP.RequestError(response, "API Error ($(response.status)): $(stream_error_message(body))"))
+end
+
 """
     streamed_request!(cb::AbstractLLMStream, url, headers, input; kwargs...)
 

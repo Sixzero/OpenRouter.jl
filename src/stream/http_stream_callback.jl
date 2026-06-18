@@ -38,40 +38,13 @@ function streamed_request!(cb::HttpStreamCallback, url, headers, input::String; 
         HTTP.closewrite(stream)
         response = HTTP.startread(stream)
 
-        # Validate content type
+        # On error status, surface the real API error first — error responses may
+        # omit Content-Type (e.g. z.ai 429), so don't gate this on the header.
+        response.status >= 400 && throw_stream_http_error(response, stream, input)
+
+        # Validate content type (success path: must be a single event-stream header)
         content_type = [header[2] for header in response.headers if lowercase(header[1]) == "content-type"]
         @assert length(content_type) == 1 "Content-Type header must be present and unique"
-        
-        # If we have an error status code and JSON content type, read the error body first
-        if response.status >= 400 && occursin("application/json", lowercase(content_type[1]))
-            error_body = String(read(stream))
-            HTTP.closeread(stream)
-            
-            # Try to parse and display the actual error
-            try
-                error_json = JSON3.read(error_body)
-                error_msg = if haskey(error_json, :error)
-                    error_detail = error_json.error
-                    if isa(error_detail, AbstractDict)
-                        get(error_detail, :message, string(error_detail))
-                    else
-                        string(error_detail)
-                    end
-                else
-                    error_body
-                end
-                response.status == 400 && @error "API 400: request body snippet" body_snippet=input[1:min(500,end)]
-                throw(HTTP.RequestError(response, "Status $(response.status): $error_msg"))
-            catch e
-                if e isa HTTP.RequestError
-                    rethrow(e)
-                else
-                    response.status == 400 && @error "API 400: request body snippet" body_snippet=input[1:min(500,end)]
-                    throw(HTTP.RequestError(response, "Status $(response.status): $error_body"))
-                end
-            end
-        end
-
         @assert occursin("text/event-stream", lowercase(content_type[1])) """
             Content-Type header should include text/event-stream.
             Received: $(content_type[1])

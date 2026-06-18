@@ -151,6 +151,33 @@ using Aqua
         @test !drops("anthropic/claude-sonnet-4.6")
     end
 
+    @testset "Streaming error without Content-Type" begin
+        using OpenRouter: HttpStreamCallback, HttpStreamHooks, ChatCompletionSchema, streamed_request!
+        import HTTP
+
+        # Mimic z.ai: error status with NO Content-Type header. Must surface the real
+        # API message, not the "Content-Type header must be present and unique" assertion.
+        handler(_) = HTTP.Response(429, String[]; body="""{"error":{"message":"Insufficient balance"}}""")
+        server = HTTP.serve!(handler, "127.0.0.1", 18799)
+        try
+            url = "http://127.0.0.1:18799/v1/chat/completions"
+            for cb in (HttpStreamCallback(; schema=ChatCompletionSchema()),
+                       HttpStreamHooks(; schema=ChatCompletionSchema()))
+                err = try
+                    streamed_request!(cb, url, ["Content-Type" => "application/json"], "{}")
+                    nothing
+                catch e
+                    e
+                end
+                @test err isa HTTP.RequestError
+                @test occursin("429", err.error)
+                @test occursin("Insufficient balance", err.error)
+            end
+        finally
+            close(server)
+        end
+    end
+
     # Include custom provider tests
     include("test_custom_providers.jl")
 
