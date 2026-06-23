@@ -83,7 +83,6 @@ function pricing_to_numeric_dict(p::Pricing)
         "input_audio_cache" => parse_or_nothing(p.input_audio_cache),
         "input_cache_read" => parse_or_nothing(p.input_cache_read),
         "input_cache_write" => parse_or_nothing(p.input_cache_write),
-        "discount" => p.discount
     )
 
     # Drop keys where value is `nothing`, sort keys for consistent ordering
@@ -107,9 +106,6 @@ function endpoint_to_frontend_dict(ep::ProviderEndpoint)
         "max_completion_tokens" => ep.max_completion_tokens,
         "pricing" => pricing_to_numeric_dict(ep.pricing),
         "tag" => ep.tag,
-        "quantization" => ep.quantization,
-        "supports_implicit_caching" => ep.supports_implicit_caching,
-        "status" => ep.status
     )
 end
 
