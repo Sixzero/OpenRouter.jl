@@ -292,6 +292,17 @@ Transform model IDs for z.ai. Strips the `z-ai/` prefix.
 zai_model_transform(model_id::AbstractString)::AbstractString = strip_provider_prefix(model_id, "z-ai")
 
 """
+    novita_model_transform(model_id::String)::String
+
+Transform OpenRouter model IDs to Novita's native namespace. Novita hosts
+Z.AI's GLM models under the `zai-org/` prefix instead of OpenRouter's `z-ai/`.
+"""
+function novita_model_transform(model_id::AbstractString)::AbstractString
+    startswith(model_id, "z-ai/") && return "zai-org/" * model_id[(length("z-ai/") + 1):end]
+    return model_id
+end
+
+"""
     cloudflare_model_transform(model_id::String)::String
 
 Transform OpenRouter model IDs to Cloudflare Workers AI format.

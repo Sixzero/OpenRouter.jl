@@ -1,5 +1,9 @@
 # Changelog
 
+## Unreleased
+
+- Fix Novita GLM models 404: map OpenRouter `z-ai/` ids to Novita's `zai-org/` namespace
+
 ## v1.3.0
 
 - Add `ChatCompletionAnthropicSchema` for Anthropic models proxied through ChatCompletion format (fixes negative `prompt_tokens` when cache tokens use additive semantics)

@@ -177,7 +177,7 @@ const PROVIDER_INFO = Dict{String,ProviderInfo}(
         "Bearer",
         "NOVITA_API_KEY",
         Dict{String,String}(),
-        nothing,
+        novita_model_transform,
         ChatCompletionSchema(),
         "OpenAI-compatible API"),
     "siliconflow" => ProviderInfo(

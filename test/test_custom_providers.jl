@@ -146,4 +146,14 @@ using OpenRouter: add_provider, remove_provider, add_model, remove_model, list_p
         # Cleanup
         remove_model("integration/test")
     end
+
+    @testset "Novita model name transform" begin
+        using OpenRouter: novita_model_transform
+        # Novita hosts Z.AI GLM models under `zai-org/`, OpenRouter uses `z-ai/`.
+        @test novita_model_transform("z-ai/glm-5.2") == "zai-org/glm-5.2"
+        @test novita_model_transform("z-ai/glm-4.6") == "zai-org/glm-4.6"
+        # Non-z-ai ids pass through unchanged.
+        @test novita_model_transform("deepseek/deepseek-v3.2") == "deepseek/deepseek-v3.2"
+        @test novita_model_transform("qwen/qwen3-max") == "qwen/qwen3-max"
+    end
 end
