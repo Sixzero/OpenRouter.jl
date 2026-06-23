@@ -256,9 +256,13 @@ function main()
 
     data = build_models_data()
 
-    open(out_file, "w") do io
+    # Write atomically: a temp file in the same dir + rename, so file watchers
+    # (e.g. Turbopack) never observe a half-written/empty file mid-export.
+    tmp_file = out_file * ".tmp"
+    open(tmp_file, "w") do io
         JSON3.pretty(io, data)
     end
+    mv(tmp_file, out_file; force=true)
 
     total_models = data["total_models"]
     println("✅ Exported $total_models models to $out_file")
