@@ -9,7 +9,9 @@ const EXCLUDED_PROVIDERS = Set([
     "amazon-bedrock",
     "azure",
     "cloudflare",
+    "friendli",
     "google",
+    "io-net",
 ])
 
 # (provider, model_id) combos that OpenRouter advertises but that are not actually
