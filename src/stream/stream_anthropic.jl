@@ -82,7 +82,11 @@ function build_response_body(schema::AnthropicSchema, cb::AbstractLLMStream; ver
     current_block_type = nothing
 
     for chunk in cb.chunks
-        isnothing(chunk.json) && continue
+        if isnothing(chunk.json)
+            verbose && !isempty(strip(chunk.data)) &&
+                @warn "Skipping Anthropic chunk with unparsed JSON (dropped delta?)" raw=chunk.data
+            continue
+        end
 
         chunk_type = get(chunk.json, :type, nothing)
 
@@ -161,7 +165,16 @@ function build_response_body(schema::AnthropicSchema, cb::AbstractLLMStream; ver
         for idx in sort(collect(keys(tool_blocks)))
             tb = tool_blocks[idx]
             json_str = String(take!(tb[:input_json]))
-            input = isempty(json_str) ? Dict() : JSON3.read(json_str, Dict)
+            input = if isempty(json_str)
+                Dict()
+            else
+                try
+                    JSON3.read(json_str, Dict)
+                catch e
+                    @warn "Incomplete tool_use JSON for block $idx (name=$(tb[:name])); a streamed delta was likely dropped or the stream closed early" exception=e bytes=sizeof(json_str) raw=json_str
+                    Dict()
+                end
+            end
             push!(content, Dict(:type => "tool_use", :id => tb[:id], :name => tb[:name], :input => input))
         end
 
