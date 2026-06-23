@@ -294,7 +294,7 @@ function extract_content(::AnthropicSchema, result::Dict)
         end
         return ""  # tool_use only response
     end
-    error("Unexpected response format from Anthropic API")
+    error("Unexpected response format from Anthropic API: $result")
 end
 
 """
