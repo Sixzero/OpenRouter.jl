@@ -1,5 +1,65 @@
 # Default methods for streaming interface
 
+# Idle timeout (seconds) for streaming reads. This library provides the
+# MECHANISM only; the timeout POLICY belongs to the caller, who alone knows
+# whether a long silence is a dead stream or a reasoning model thinking.
+# Disabled by default (0) so we never silently abort a healthy generation;
+# callers opt in via the `stream_idle_timeout` kwarg.
+const DEFAULT_STREAM_IDLE_TIMEOUT = 0.0
+
+"""
+    StreamIdleTimeoutError(timeout)
+
+Thrown when no bytes arrive on a streaming response for `timeout` seconds.
+This is an *idle* timeout (it resets on every received chunk), so it never
+interrupts an actively-streaming generation — only a genuinely stalled one.
+"""
+struct StreamIdleTimeoutError <: Exception
+    timeout::Float64
+end
+Base.showerror(io::IO, e::StreamIdleTimeoutError) =
+    print(io, "StreamIdleTimeoutError: no data received for $(e.timeout)s (stream stalled)")
+
+# Abort an in-flight read by closing the underlying connection/socket.
+# For an `HTTP.Stream`, `close(stream)` only marks the wrapper and does NOT
+# interrupt a blocked `readavailable`; closing `stream.stream` (the
+# Connection/TCPSocket) does. `hasproperty` guards against HTTP.jl renaming the
+# internal field — fall back to closing the wrapper itself.
+_abort_read!(stream::HTTP.Stream) =
+    close(hasproperty(stream, :stream) ? stream.stream : stream)
+_abort_read!(stream) = close(stream)
+
+"""
+    readavailable_with_idle_timeout(stream, timeout; fired) -> Vector{UInt8}
+
+Like `readavailable(stream)` but if no byte arrives within `timeout` seconds the
+underlying connection is closed via `_abort_read!` (which is what unblocks the
+in-flight read) and `fired[]` is set. `timeout <= 0` disables the guard. The
+deadline applies to this single read, so a caller looping over chunks gets a
+per-chunk idle timeout that resets on every chunk.
+
+This does not itself throw — the abort makes `readavailable` return/throw, and
+the caller decides what to do based on `fired[]` (see `_open_sse_stream`). That
+keeps timeout detection in one place across the `HTTP.open` boundary, where HTTP
+cleanup would otherwise mask a thrown error with an `EOFError`.
+"""
+function readavailable_with_idle_timeout(stream, timeout::Real; fired::Ref{Bool}=Ref(false))
+    timeout <= 0 && return readavailable(stream)
+    timer = Timer(timeout) do _
+        fired[] = true
+        try
+            _abort_read!(stream)
+        catch e
+            @debug "failed to abort stalled stream read" exception=(e, catch_backtrace())
+        end
+    end
+    try
+        return readavailable(stream)
+    finally
+        close(timer)
+    end
+end
+
 
 @inline function _has_double_newline_end(s::AbstractString)
     endswith(s, "\n\n") || endswith(s, "\r\n\r\n")
@@ -245,6 +305,65 @@ function throw_stream_http_error(response, stream, input::AbstractString)
     HTTP.closeread(stream)
     response.status == 400 && @error "API 400: request body snippet" body_snippet=input[1:min(500,end)]
     throw(HTTP.RequestError(response, "API Error ($(response.status)): $(stream_error_message(body))"))
+end
+
+"""
+    _open_sse_stream(cb, url, headers, input; verbose, kwargs...) -> HTTP.Response
+
+Open a streaming POST request, validate it's an event-stream, then read chunks
+with a per-chunk idle timeout (`stream_idle_timeout`, default disabled) and feed
+each parsed chunk to the schema hooks + `callback(cb, chunk)`. Shared by all
+`streamed_request!` callback types — they differ only in their post-processing.
+"""
+function _open_sse_stream(cb::AbstractLLMStream, url, headers, input::String; verbose::Bool, kwargs...)
+    idle_timeout = get(kwargs, :stream_idle_timeout, get(cb.kwargs, :stream_idle_timeout, DEFAULT_STREAM_IDLE_TIMEOUT))
+    http_kwargs = Base.structdiff(NamedTuple(kwargs), (; stream_idle_timeout=nothing))
+    # Closing the socket on idle makes HTTP cleanup throw an EOFError that masks
+    # the StreamIdleTimeoutError; `idle_fired` lets us re-surface it.
+    idle_fired = Ref(false)
+    try HTTP.open("POST", url, headers; http_kwargs...) do stream
+        write(stream, input)
+        HTTP.closewrite(stream)
+        response = HTTP.startread(stream)
+
+        # On error status, surface the real API error first — error responses may
+        # omit Content-Type (e.g. z.ai 429), so don't gate this on the header.
+        response.status >= 400 && throw_stream_http_error(response, stream, input)
+
+        # Success path: Content-Type must be a single event-stream header.
+        content_type = [header[2] for header in response.headers if lowercase(header[1]) == "content-type"]
+        @assert length(content_type) == 1 "Content-Type header must be present and unique"
+        @assert occursin("text/event-stream", lowercase(content_type[1])) """
+            Content-Type header should include text/event-stream.
+            Received: $(content_type[1])
+            Status: $(response.status)
+            Headers: $(response.headers)
+            Body: $(String(response.body))
+            Please check model and that stream=true is set.
+            """
+
+        isdone = false
+        spillover = ""
+        while !eof(stream) && !isdone
+            masterchunk = String(readavailable_with_idle_timeout(stream, idle_timeout; fired=idle_fired))
+            # The idle abort can make the read return empty instead of throwing;
+            # treat that as a stall, not a clean end-of-stream.
+            idle_fired[] && throw(StreamIdleTimeoutError(Float64(idle_timeout)))
+            chunks, spillover = extract_chunks(cb.schema, masterchunk; verbose, spillover, cb.kwargs...)
+            for chunk in chunks
+                verbose && @debug "Chunk Data: $(chunk.data)"
+                handle_error_message(chunk; verbose, cb.kwargs...)          # always throws on error
+                is_done(cb.schema, chunk; verbose, cb.kwargs...) && (isdone = true)
+                callback(cb, chunk; verbose, cb.kwargs...)
+                push!(cb, chunk)
+            end
+        end
+        HTTP.closeread(stream)
+    end
+    catch e
+        idle_fired[] && !(e isa StreamIdleTimeoutError) && throw(StreamIdleTimeoutError(Float64(idle_timeout)))
+        rethrow()
+    end
 end
 
 """

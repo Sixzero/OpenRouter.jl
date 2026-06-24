@@ -39,7 +39,7 @@ export OpenRouterModel, OpenRouterEmbeddingModel, Pricing, Architecture, Provide
 export ModelConfig, GeminiConfig
 
 # Streaming types
-export HttpStreamCallback, StreamChunk, HttpStreamHooks
+export HttpStreamCallback, StreamChunk, HttpStreamHooks, StreamIdleTimeoutError
 
 # Note: add_provider, remove_provider, add_model, remove_model are NOT exported
 # They are internal functionality that users can import explicitly if needed:

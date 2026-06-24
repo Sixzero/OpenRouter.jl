@@ -297,52 +297,7 @@ end
 # Add the missing streamed_request! method for HttpStreamHooks
 function streamed_request!(cb::HttpStreamHooks, url, headers, input::String; kwargs...)
     verbose = get(kwargs, :verbose, false) || cb.verbose
-    resp = HTTP.open("POST", url, headers; kwargs...) do stream
-        write(stream, input)
-        HTTP.closewrite(stream)
-        response = HTTP.startread(stream)
-
-        # On error status, surface the real API error first — error responses may
-        # omit Content-Type (e.g. z.ai 429), so don't gate this on the header.
-        response.status >= 400 && throw_stream_http_error(response, stream, input)
-
-        # Validate content type (success path: must be a single event-stream header)
-        content_type = [header[2] for header in response.headers if lowercase(header[1]) == "content-type"]
-        @assert length(content_type) == 1 "Content-Type header must be present and unique"
-        @assert occursin("text/event-stream", lowercase(content_type[1])) """
-            Content-Type header should include text/event-stream.
-            Received: $(content_type[1])
-            Status: $(response.status)
-            Headers: $(response.headers)
-            Body: $(String(response.body))
-            Please check model and that stream=true is set.
-            """
-
-        isdone = false
-        spillover = ""
-
-        while !eof(stream) && !isdone
-            masterchunk = String(readavailable(stream))
-            chunks, spillover = extract_chunks(cb.schema, masterchunk; verbose, spillover, cb.kwargs...)
-
-            for chunk in chunks
-                verbose && @debug "Chunk Data: $(chunk.data)"
-
-                # Handle errors (always throw)
-                handle_error_message(chunk; verbose, cb.kwargs...)
-
-                # Check for termination
-                is_done(cb.schema, chunk; verbose, cb.kwargs...) && (isdone = true)
-
-                # Trigger callback
-                callback(cb, chunk; verbose, cb.kwargs...)
-
-                # Store chunk
-                push!(cb.chunks, chunk)
-            end
-        end
-        HTTP.closeread(stream)
-    end
+    resp = _open_sse_stream(cb, url, headers, input; verbose, kwargs...)
 
     # Ensure on_meta_ai fires even if stream ended without a done-marker
     # (provider never sent [DONE] or a trailing usage chunk).
