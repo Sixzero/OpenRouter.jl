@@ -2,6 +2,7 @@
 
 using OpenRouter
 using JSON3
+using Dates
 
 # ---------- Configuration ----------
 
@@ -196,6 +197,60 @@ function process_model(m::OpenRouterModel, i::Int, total::Int)
 end
 
 """
+Build model specs for an Ollama provider (`ollama` / `ollama_cloud`) from its
+native `/api/tags` listing. Ollama exposes no pricing or context metadata, so
+those endpoint fields are left empty. Returns `[]` if the provider is
+unreachable (e.g. local Ollama not running, or missing OLLAMA_API_KEY).
+"""
+function build_ollama_specs(provider_slug::AbstractString)
+    local raw
+    try
+        raw = list_native_models(provider_slug)
+    catch err
+        @warn "Skipping Ollama models; provider unreachable" provider=provider_slug exception=err
+        return Any[]
+    end
+    println("Fetched $(length(raw)) model(s) from $provider_slug")
+
+    specs = Any[]
+    for m in raw
+        model_id = get(m, "model", get(m, "name", nothing))
+        model_id === nothing && continue
+
+        # Convert ISO `modified_at` (e.g. "2025-12-02T00:00:00Z") to a unix
+        # timestamp for the `created` field; take the leading "yyyy-mm-ddTHH:MM:SS".
+        created = nothing
+        ts = get(m, "modified_at", nothing)
+        if ts !== nothing && length(ts) >= 19
+            try
+                created = round(Int, datetime2unix(DateTime(ts[1:19], dateformat"yyyy-mm-ddTHH:MM:SS")))
+            catch
+            end
+        end
+
+        endpoint = Dict(
+            "provider_name" => provider_slug,
+            "endpoint_name" => model_id,
+            "context_length" => nothing,
+            "max_completion_tokens" => nothing,
+            "pricing" => Dict{String,Any}(),
+            "tag" => "$provider_slug/$model_id",
+        )
+        # `id` is BARE (no provider prefix); the frontend builds the final slug as
+        # `${provider_name}:${id}` from the selected endpoint, matching OpenRouter
+        # catalog entries. A prefixed id here would double-prefix to
+        # `ollama_cloud:ollama_cloud:...`.
+        push!(specs, Dict(
+            "id" => model_id,
+            "name" => model_id,
+            "created" => created,
+            "endpoints" => Any[endpoint],
+        ))
+    end
+    return specs
+end
+
+"""
 Export all models + endpoints from OpenRouter into a JSON structure
 compatible with the frontend's ModelsData type (plus extra endpoint details).
 """
@@ -223,6 +278,9 @@ function build_models_data()
     filter!(d -> !isempty(d["endpoints"]), specs)
 
     println("\nTotal excluded endpoints: $excluded_endpoints_count")
+
+    # Append native Ollama Cloud models (not in the OpenRouter catalog).
+    append!(specs, build_ollama_specs("ollama_cloud"))
 
     # Sort models alphabetically by id for consistent ordering
     sort!(specs, by=d -> d["id"])
