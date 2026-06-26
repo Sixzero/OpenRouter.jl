@@ -196,13 +196,82 @@ function process_model(m::OpenRouterModel, i::Int, total::Int)
     return spec, excluded_count
 end
 
+# ---------- Ollama catalog price matching ----------
+#
+# Ollama Cloud publishes NO per-token pricing (it's a flat-rate subscription /
+# GPU-time model). But its models are the same open weights that OpenRouter
+# lists with real per-token prices. So we fuzzy-match each Ollama model to its
+# OpenRouter catalog twin and inherit that twin's pricing + context length.
+# Models with no catalog twin are DROPPED (we'd otherwise ship a $0/free model).
+
+_norm(s) = lowercase(replace(String(s), r"[^a-z0-9]"i => ""))
+function _param_size(s)
+    m = match(r"(\d+)b", lowercase(String(s)))
+    m === nothing ? nothing : parse(Int, m.captures[1])
+end
+# Leading alphabetic run of a normalized id, e.g. "ministral3" -> "ministral",
+# "gptoss20b" -> "gptoss". Groups variants that differ only by version/size.
+function _alpha_family(s)
+    m = match(r"^[a-z]+", _norm(s))
+    m === nothing ? "" : m.match
+end
+
 """
-Build model specs for an Ollama provider (`ollama` / `ollama_cloud`) from its
-native `/api/tags` listing. Ollama exposes no pricing or context metadata, so
-those endpoint fields are left empty. Returns `[]` if the provider is
-unreachable (e.g. local Ollama not running, or missing OLLAMA_API_KEY).
+Find the best OpenRouter catalog id for a bare Ollama model id, or `nothing`.
+
+E.g. "gpt-oss:20b" -> "openai/gpt-oss-120b" family, picking the variant that
+best matches the version/size. `:free` catalog variants are skipped (they're
+\$0 and would defeat the purpose). Scoring prefers an exact normalized match,
+then same parameter size, then the tightest family name.
+
+A candidate is considered if either (a) one normalized id is a prefix/substring
+of the other, or (b) it shares the alphabetic family AND the exact parameter
+size. Path (b) is essential for ids like "ministral-3:14b", where Ollama's "3"
+is a generation tag and "14b" the size, so the catalog twin
+"mistralai/ministral-14b-2512" shares no substring with base "ministral3".
 """
-function build_ollama_specs(provider_slug::AbstractString)
+function find_catalog_match(ollama_id::AbstractString, catalog_ids)
+    o_after = lowercase(ollama_id)
+    o_norm  = _norm(o_after)
+    o_base  = _norm(replace(o_after, r":.*" => ""))   # drop ":size" tag
+    o_size  = _param_size(o_after)
+    o_fam   = _alpha_family(o_base)
+    isempty(o_base) && return nothing
+
+    best, best_score = nothing, -Inf
+    for cid in catalog_ids
+        after = lowercase(last(split(cid, "/")))
+        endswith(after, ":free") && continue
+        c_norm = _norm(after)
+        c_size = _param_size(after)
+
+        name_match = startswith(c_norm, o_base) || startswith(o_base, c_norm) || occursin(o_base, c_norm)
+        size_match = o_size !== nothing && c_size !== nothing && o_size == c_size &&
+                     !isempty(o_fam) && _alpha_family(after) == o_fam
+        (name_match || size_match) || continue
+
+        score = 0.0
+        o_norm == c_norm && (score += 100)
+        name_match       && (score += 10)
+        if o_size !== nothing && c_size !== nothing
+            score += (o_size == c_size ? 50 : -abs(o_size - c_size) / 100)
+        end
+        score += 1.0 / length(c_norm)
+
+        if score > best_score
+            best, best_score = cid, score
+        end
+    end
+    return best
+end
+
+"""
+Build model specs for the `ollama_cloud` provider from its native `/api/tags`
+listing, inheriting pricing + context length from the matching OpenRouter
+catalog model (`catalog_specs`). Unmatched models are dropped and reported.
+Returns `[]` if the provider is unreachable (missing OLLAMA_API_KEY).
+"""
+function build_ollama_specs(provider_slug::AbstractString, catalog_specs::Vector)
     local raw
     try
         raw = list_native_models(provider_slug)
@@ -212,10 +281,21 @@ function build_ollama_specs(provider_slug::AbstractString)
     end
     println("Fetched $(length(raw)) model(s) from $provider_slug")
 
+    catalog_by_id = Dict(d["id"] => d for d in catalog_specs)
+    catalog_ids = collect(keys(catalog_by_id))
+
     specs = Any[]
+    dropped = String[]
     for m in raw
         model_id = get(m, "model", get(m, "name", nothing))
         model_id === nothing && continue
+
+        match_id = find_catalog_match(model_id, catalog_ids)
+        if match_id === nothing
+            push!(dropped, model_id)   # no catalog twin -> no pricing -> drop
+            continue
+        end
+        twin_ep = catalog_by_id[match_id]["endpoints"][1]
 
         # Convert ISO `modified_at` (e.g. "2025-12-02T00:00:00Z") to a unix
         # timestamp for the `created` field; take the leading "yyyy-mm-ddTHH:MM:SS".
@@ -231,10 +311,11 @@ function build_ollama_specs(provider_slug::AbstractString)
         endpoint = Dict(
             "provider_name" => provider_slug,
             "endpoint_name" => model_id,
-            "context_length" => nothing,
-            "max_completion_tokens" => nothing,
-            "pricing" => Dict{String,Any}(),
+            "context_length" => twin_ep["context_length"],
+            "max_completion_tokens" => twin_ep["max_completion_tokens"],
+            "pricing" => twin_ep["pricing"],          # inherited per-token pricing
             "tag" => "$provider_slug/$model_id",
+            "pricing_source" => match_id,             # provenance of the inherited price
         )
         # `id` is BARE (no provider prefix); the frontend builds the final slug as
         # `${provider_name}:${id}` from the selected endpoint, matching OpenRouter
@@ -247,6 +328,12 @@ function build_ollama_specs(provider_slug::AbstractString)
             "endpoints" => Any[endpoint],
         ))
     end
+
+    if !isempty(dropped)
+        println("\n⚠️  Dropping $(length(dropped)) $provider_slug model(s) with no catalog price match:")
+        foreach(d -> println("  - $d"), dropped)
+    end
+    println("Kept $(length(specs)) $provider_slug model(s) with inherited pricing")
     return specs
 end
 
@@ -279,8 +366,9 @@ function build_models_data()
 
     println("\nTotal excluded endpoints: $excluded_endpoints_count")
 
-    # Append native Ollama Cloud models (not in the OpenRouter catalog).
-    append!(specs, build_ollama_specs("ollama_cloud"))
+    # Append native Ollama Cloud models (not in the OpenRouter catalog), with
+    # pricing inherited from their matching catalog twins.
+    append!(specs, build_ollama_specs("ollama_cloud", specs))
 
     # Sort models alphabetically by id for consistent ordering
     sort!(specs, by=d -> d["id"])
@@ -326,4 +414,7 @@ function main()
     println("✅ Exported $total_models models to $out_file")
 end
 
-main()
+# Run only when executed as a script (tests `include` this file for the matcher).
+if abspath(PROGRAM_FILE) == abspath(@__FILE__)
+    main()
+end

@@ -187,6 +187,9 @@ using Aqua
     # Ollama native API tests (live cloud tests gated on OLLAMA_API_KEY)
     include("test_ollama_provider.jl")
 
+    # Ollama -> OpenRouter catalog price matching (export script)
+    include("test_ollama_pricing_match.jl")
+
     # Echo server tests (all schemas)
     include("test_echo_server.jl")
 end
