@@ -268,13 +268,21 @@ const PROVIDER_INFO = Dict{String,ProviderInfo}(
 
     # Local / native providers
     "ollama" => ProviderInfo(
-        "http://localhost:11434/v1",
+        "http://localhost:11434/api",
         "Bearer",                     # Ignored; no auth_header needed when api_key is empty
         nothing,                      # No env var; api_key optional
         Dict{String,String}(),
         ollama_model_transform,
-        ChatCompletionSchema(),
-        "Local Ollama instance using OpenAI-compatible /v1/chat/completions API"),
+        OllamaSchema(),
+        "Local Ollama instance using the native /api/chat API"),
+    "ollama_cloud" => ProviderInfo(
+        "https://ollama.com/api",
+        "Bearer",
+        "OLLAMA_API_KEY",
+        Dict{String,String}(),
+        ollama_model_transform,
+        OllamaSchema(),
+        "Ollama Cloud (ollama.com) using the native /api/chat API"),
     # ─── Echo providers for E2E testing ───
     "echo_chat" => ProviderInfo(
         "http://localhost:8787/v1",

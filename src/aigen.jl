@@ -257,15 +257,16 @@ function parse_provider_model(provider_model::AbstractString)
         return provider_info, transformed_model_id, create_stub_endpoint(provider_name, lookup_model_id)
     end
 
+    # Ollama (local + cloud, and any custom Ollama host) has no OpenRouter metadata;
+    # skip the lookup entirely and use a zero-priced stub endpoint for cost tracking.
+    if provider_info.schema isa OllamaSchema
+        transformed_model_id = transform_model_name(provider_info, lookup_model_id) * model_suffix
+        return provider_info, transformed_model_id, create_stub_endpoint_zero_pricing(provider_name, lookup_model_id)
+    end
+
     # Get the cached model with endpoints
     cached_model = get_model(lookup_model_id; fetch_endpoints=true)
     if cached_model === nothing
-        # Special handling for local providers (e.g. Ollama) that don't have OpenRouter metadata
-        if lc_name == "ollama"
-            transformed_model_id = transform_model_name(provider_info, lookup_model_id) * model_suffix
-            return provider_info, transformed_model_id, create_stub_endpoint_zero_pricing(provider_name, lookup_model_id)
-        end
-
         # For other providers, this is an error - show helpful message
         available_models = list_models(lowercase(provider_name))
         model_ids = [m.id for m in available_models]

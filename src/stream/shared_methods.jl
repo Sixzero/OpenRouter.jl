@@ -208,6 +208,10 @@ function is_done(schema::AbstractRequestSchema, chunk::AbstractStreamChunk; kwar
     throw(ArgumentError("is_done is not implemented for schema $(typeof(schema))"))
 end
 
+# Whether the schema's stream is Server-Sent Events (`data:`/`text/event-stream`).
+# Ollama overrides this to false (it streams newline-delimited JSON).
+is_sse_stream(::AbstractRequestSchema) = true
+
 function extract_content(schema::AbstractRequestSchema, chunk::AbstractStreamChunk; kwargs...)
     throw(ArgumentError("extract_content is not implemented for schema $(typeof(schema))"))
 end
@@ -330,17 +334,20 @@ function _open_sse_stream(cb::AbstractLLMStream, url, headers, input::String; ve
         # omit Content-Type (e.g. z.ai 429), so don't gate this on the header.
         response.status >= 400 && throw_stream_http_error(response, stream, input)
 
-        # Success path: Content-Type must be a single event-stream header.
-        content_type = [header[2] for header in response.headers if lowercase(header[1]) == "content-type"]
-        @assert length(content_type) == 1 "Content-Type header must be present and unique"
-        @assert occursin("text/event-stream", lowercase(content_type[1])) """
-            Content-Type header should include text/event-stream.
-            Received: $(content_type[1])
-            Status: $(response.status)
-            Headers: $(response.headers)
-            Body: $(String(response.body))
-            Please check model and that stream=true is set.
-            """
+        # Success path: SSE schemas must declare a single event-stream Content-Type.
+        # Non-SSE schemas (e.g. Ollama NDJSON, `application/json`) skip this check.
+        if is_sse_stream(cb.schema)
+            content_type = [header[2] for header in response.headers if lowercase(header[1]) == "content-type"]
+            @assert length(content_type) == 1 "Content-Type header must be present and unique"
+            @assert occursin("text/event-stream", lowercase(content_type[1])) """
+                Content-Type header should include text/event-stream.
+                Received: $(content_type[1])
+                Status: $(response.status)
+                Headers: $(response.headers)
+                Body: $(String(response.body))
+                Please check model and that stream=true is set.
+                """
+        end
 
         isdone = false
         spillover = ""

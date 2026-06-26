@@ -9,6 +9,7 @@ include("stream_chatcompletion.jl")
 include("stream_anthropic.jl")
 include("stream_gemini.jl")
 include("stream_response.jl")
+include("stream_ollama.jl")
 
 # ChatCompletionAnthropicSchema streaming forwards
 acc_tokens(s::ChatCompletionAnthropicSchema, acc::TokenCounts, new::TokenCounts) = acc_tokens(_ccs, acc, new)
