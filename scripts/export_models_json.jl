@@ -315,7 +315,6 @@ function build_ollama_specs(provider_slug::AbstractString, catalog_specs::Vector
             "max_completion_tokens" => twin_ep["max_completion_tokens"],
             "pricing" => twin_ep["pricing"],          # inherited per-token pricing
             "tag" => "$provider_slug/$model_id",
-            "pricing_source" => match_id,             # provenance of the inherited price
         )
         # `id` is BARE (no provider prefix); the frontend builds the final slug as
         # `${provider_name}:${id}` from the selected endpoint, matching OpenRouter
