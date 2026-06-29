@@ -27,9 +27,11 @@ function from_dict(dict::Dict)
     )
 end
 
-# Cost discount resolver, keyed by endpoint name → fraction off (0.0–1.0).
+# Cost discount resolver: takes the ProviderEndpoint → fraction off (0.0–1.0).
+# Gets the whole endpoint (not just the name) so apps can match on provider_name /
+# model_name, which are more reliable keys than `name` (whose format varies per provider).
 # The library ships no promos: apps register their own table, e.g.
-#   OpenRouter.COST_DISCOUNT_FN[] = name -> ...
+#   OpenRouter.COST_DISCOUNT_FN[] = ep -> ...
 const COST_DISCOUNT_FN = Ref{Function}(_ -> 0.0)
 
 # Cost calculation using existing Pricing struct and parse_price function
@@ -74,7 +76,7 @@ Calculate cost for a given endpoint and token usage.
 Unwraps `.pricing`. Warns if cost cannot be determined (e.g. missing pricing).
 """
 function calculate_cost(endpoint::ProviderEndpoint, tokens::Union{Nothing,TokenCounts,Dict}, verbose::Bool=false;
-                        discount::Float64=COST_DISCOUNT_FN[](endpoint.name))
+                        discount::Float64=COST_DISCOUNT_FN[](endpoint))
     if endpoint.pricing === nothing
         verbose && @warn "No pricing available on endpoint; cannot calculate cost." endpoint=endpoint tokens=tokens
         return nothing

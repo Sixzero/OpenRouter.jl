@@ -245,10 +245,12 @@ and exposed on `AIMessage.cost`.
 Cache-related and reasoning-related prices, as well as per-endpoint `Pricing.discount`, are **first-class** in this calculation – they are not bolted on later.
 
 Promotional / campaign discounts are **not** baked into the library. Apps inject
-their own table via `COST_DISCOUNT_FN`, a resolver keyed by endpoint name → fraction off:
+their own table via `COST_DISCOUNT_FN`, a resolver that takes the `ProviderEndpoint`
+and returns a fraction off (match on `model_name`/`provider_name`, which are more
+stable than the per-route `name`):
 
 ```julia
-OpenRouter.COST_DISCOUNT_FN[] = name -> occursin(r"opus-4\.7"i, name) ? 0.5 : 0.0
+OpenRouter.COST_DISCOUNT_FN[] = ep -> occursin(r"opus 4\.7"i, ep.model_name) ? 0.5 : 0.0
 ```
 
 `calculate_cost(endpoint, tokens)` consults it by default; pass `discount=` to override.
