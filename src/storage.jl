@@ -214,9 +214,13 @@ function save_cache(cache::ModelCache)
         ),
         "last_full_refresh" => string(cache.last_full_refresh)
     )
-    open(cache_file, "w") do f
+    # Atomic write: write to a temp file then rename, so an interrupted write
+    # (e.g. SIGINT mid-serialization) can never leave a truncated models.json.
+    tmp_file = cache_file * ".tmp"
+    open(tmp_file, "w") do f
         JSON3.pretty(f, cache_data)
     end
+    mv(tmp_file, cache_file; force = true)
     GLOBAL_CACHE[] = cache
 end
 
