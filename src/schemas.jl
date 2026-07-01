@@ -237,13 +237,16 @@ function build_payload(schema::AnthropicSchema, prompt, model_id::AbstractString
     # Add stream parameter only if true
     stream && (payload["stream"] = true)
 
-    # Claude Opus 4.7+ and Fable deprecated `temperature` and `top_p` (API returns 400 if sent).
-    # Assumed to apply to all Opus versions >= 4.7 and the Fable line going forward.
+    # Claude Opus >= 4.7, Sonnet >= 5 and Fable deprecated `temperature` and `top_p` (API returns 400 if sent).
     # Also: when extended thinking is enabled (suffix like `(high)`, `(xhigh)`),
     # Anthropic requires `top_p` >= 0.95 or unset, and `temperature` must be default.
     # We drop them silently-with-warning so existing call sites keep working.
-    opus_minor = match(r"claude-opus-4[-.](\d+)"i, model_id)
-    drop_sampling = (opus_minor !== nothing && parse(Int, opus_minor.captures[1]) >= 7) ||
+    # (major, minor) version tuples compare lexicographically, so `>= (4, 7)` just works.
+    version(fam) = (m = match(Regex("claude-$fam-(\\d+)(?:[-.](\\d+))?", "i"), model_id)) === nothing ? nothing :
+                   (parse(Int, m[1]), m[2] === nothing ? 0 : parse(Int, m[2]))
+    opus_v, sonnet_v = version("opus"), version("sonnet")
+    drop_sampling = (opus_v !== nothing && opus_v >= (4, 7)) ||
+                    (sonnet_v !== nothing && sonnet_v >= (5, 0)) ||
                     occursin(r"claude-fable"i, model_id) ||
                     occursin(r"\([^()]+\)$", model_id)
 

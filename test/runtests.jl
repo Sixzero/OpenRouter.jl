@@ -140,9 +140,11 @@ using Aqua
         drops(m) = let p = build_payload(AnthropicSchema(), "hi", m, nothing; top_p=0.9, temperature=0.7, max_tokens=10)
             !haskey(p, "top_p") && !haskey(p, "temperature")
         end
-        # Opus >= 4.7 and Fable deprecated `top_p`/`temperature` (API 400 otherwise).
+        # Opus >= 4.7, Sonnet >= 5 and Fable deprecated `top_p`/`temperature` (API 400 otherwise).
         @test drops("anthropic/claude-opus-4.7")
         @test drops("anthropic/claude-opus-4.8")
+        @test drops("anthropic/claude-opus-5")
+        @test drops("anthropic/claude-sonnet-5")
         @test drops("anthropic/claude-fable-5")
         # Thinking suffix also forces a drop on any model.
         @test drops("anthropic/claude-sonnet-4.6(xhigh)")
