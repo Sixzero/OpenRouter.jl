@@ -96,6 +96,7 @@ function cerebras_model_transform(m_id::AbstractString)::AbstractString
     m_id == "qwen/qwen3-235b-a22b-2507" && return "qwen-3-235b-a22b-instruct-2507"
     m_id == "meta-llama/llama-3.3-70b-instruct" && return "llama-3.3-70b"
     m_id == "z-ai/glm-4.6" && return "zai-glm-4.6"
+    m_id == "z-ai/glm-4.7" && return "zai-glm-4.7"
     return m_id
 end
 
