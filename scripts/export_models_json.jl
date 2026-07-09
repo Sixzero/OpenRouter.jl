@@ -336,6 +336,29 @@ function build_ollama_specs(provider_slug::AbstractString, catalog_specs::Vector
     return specs
 end
 
+# ---------- Extra proxy-only models ----------
+#
+# Models served via cliproxyapi (OAuth) that are NOT in the OpenRouter catalog,
+# so the export would otherwise drop them. Pricing is informational only
+# (billing goes through the proxy's OAuth account).
+# grok-composer pricing: third-party reported standard/async tier ($0.50/$2.50 per M);
+# no official xAI API pricing published yet.
+const EXTRA_MODELS = Any[
+    Dict(
+        "id" => "x-ai/grok-composer-2.5-fast",
+        "name" => "xAI: Grok Composer 2.5 Fast",
+        "created" => 1740960000,
+        "endpoints" => Any[Dict(
+            "provider_name" => "xAI",
+            "endpoint_name" => "xAI | x-ai/grok-composer-2.5-fast",
+            "context_length" => 200000,
+            "max_completion_tokens" => 32768,
+            "pricing" => Dict("prompt" => 0.0000005, "completion" => 0.0000025),
+            "tag" => "xai",
+        )],
+    ),
+]
+
 """
 Export all models + endpoints from OpenRouter into a JSON structure
 compatible with the frontend's ModelsData type (plus extra endpoint details).
@@ -368,6 +391,10 @@ function build_models_data()
     # Append native Ollama Cloud models (not in the OpenRouter catalog), with
     # pricing inherited from their matching catalog twins.
     append!(specs, build_ollama_specs("ollama_cloud", specs))
+
+    # Append proxy-only models (cliproxyapi OAuth) missing from the catalog.
+    existing_ids = Set(d["id"] for d in specs)
+    append!(specs, filter(d -> !(d["id"] in existing_ids), EXTRA_MODELS))
 
     # Sort models alphabetically by id for consistent ordering
     sort!(specs, by=d -> d["id"])
