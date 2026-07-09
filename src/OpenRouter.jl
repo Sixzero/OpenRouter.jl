@@ -1,6 +1,7 @@
 module OpenRouter
 
 using Base64: base64decode
+import CodecZlib
 
 include("types.jl")
 include("stream_interface.jl")

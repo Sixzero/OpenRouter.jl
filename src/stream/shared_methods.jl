@@ -281,6 +281,30 @@ Handle error messages from streaming response. Always throws on error.
     return nothing
 end
 
+"""
+    decode_response_body(raw, headers) -> String
+
+Decode a raw response body honoring `Content-Encoding: gzip`. Streaming requests
+use `HTTP.open`, which bypasses HTTP.jl's automatic decompression, so error
+bodies arrive still gzip-compressed when the server sets that header (e.g.
+CLIProxyAPI's 403 region-lock JSON). Falls back to the raw bytes if decoding
+fails or the encoding is not gzip.
+"""
+function decode_response_body(raw::AbstractVector{UInt8}, headers)
+    enc = ""
+    for (k, v) in headers
+        lowercase(k) == "content-encoding" && (enc = lowercase(strip(v)); break)
+    end
+    if enc == "gzip"
+        try
+            return String(transcode(CodecZlib.GzipDecompressor, raw))
+        catch
+            # fall through to raw on decode failure
+        end
+    end
+    return String(copy(raw))
+end
+
 "Extract a human-readable error message from an API error body (JSON `error`/`message`, else raw)."
 function stream_error_message(body::AbstractString)
     isempty(strip(body)) && return "<empty response body>"
@@ -305,8 +329,9 @@ error with a missing or non-stream Content-Type (e.g. z.ai 429) surface the real
 instead of a misleading content-type assertion failure.
 """
 function throw_stream_http_error(response, stream, input::AbstractString)
-    body = String(read(stream))
+    raw = read(stream)
     HTTP.closeread(stream)
+    body = decode_response_body(raw, response.headers)
     response.status == 400 && @error "API 400: request body snippet" body_snippet=input[1:min(500,end)]
     throw(HTTP.RequestError(response, "API Error ($(response.status)): $(stream_error_message(body))"))
 end

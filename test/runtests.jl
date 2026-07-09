@@ -180,6 +180,35 @@ using Aqua
         end
     end
 
+    @testset "Streaming error with gzip Content-Encoding" begin
+        using OpenRouter: HttpStreamCallback, ChatCompletionSchema, streamed_request!
+        import HTTP, CodecZlib
+
+        # Mimic CLIProxyAPI's 403 region-lock: gzip-compressed JSON body. HTTP.open
+        # bypasses auto-decompression, so the error path must gunzip it itself,
+        # otherwise the user sees raw gzip bytes instead of the real message.
+        json = """{"code":"permission-denied","error":"The model grok-4.5 is not available in your region."}"""
+        gz = transcode(CodecZlib.GzipCompressor, Vector{UInt8}(json))
+        handler(_) = HTTP.Response(403, ["Content-Type" => "application/json",
+                                         "Content-Encoding" => "gzip"]; body=gz)
+        server = HTTP.serve!(handler, "127.0.0.1", 18798)
+        try
+            url = "http://127.0.0.1:18798/v1/chat/completions"
+            err = try
+                streamed_request!(HttpStreamCallback(; schema=ChatCompletionSchema()),
+                                  url, ["Content-Type" => "application/json"], "{}")
+                nothing
+            catch e
+                e
+            end
+            @test err isa HTTP.RequestError
+            @test occursin("403", err.error)
+            @test occursin("not available in your region", err.error)
+        finally
+            close(server)
+        end
+    end
+
     # Include custom provider tests
     include("test_custom_providers.jl")
 
