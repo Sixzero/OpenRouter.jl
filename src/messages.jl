@@ -41,7 +41,7 @@ Base.@kwdef struct ToolMessage <: AbstractMessage
 end
 
 """Parse the arguments from a tool_call dict, handling both JSON string and already-parsed Dict."""
-function get_arguments(tool_call::Dict)::Dict{String,Any}
+function get_arguments(tool_call::AbstractDict)::Dict{String,Any}
     raw = tool_call["function"]["arguments"]
     raw isa AbstractString ? JSON3.read(raw, Dict{String,Any}) : Dict{String,Any}(raw)  # the standard is Stinrg... so this is fairly too safe and should be removed later IMO
 end

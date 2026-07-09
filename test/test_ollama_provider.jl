@@ -45,6 +45,22 @@ end
     @test pt["tools"][1]["function"]["name"] == "f"
 end
 
+@testset "OllamaSchema tool_call arguments become object" begin
+    s = OllamaSchema()
+    # OpenAI encodes tool_call arguments as a JSON string; Ollama's native /api/chat
+    # rejects that with a 400 ("Value looks like object, but can't find closing '}'")
+    # on a tool-call round-trip. build_messages must decode it back to an object.
+    tc = Dict("id" => "call_1", "type" => "function",
+              "function" => Dict("name" => "run_shell", "arguments" => "{\"cmd\":\"ls -la\"}"))
+    ai = OpenRouter.AIMessage(content="", tool_calls=[tc])
+    toolmsg = OpenRouter.ToolMessage(content="ok", tool_call_id="call_1", name="run_shell")
+    built = build_messages(s, [OpenRouter.UserMessage(content="hi"), ai, toolmsg], nothing)
+
+    args = built[2]["tool_calls"][1]["function"]["arguments"]
+    @test args isa AbstractDict           # object, not a string
+    @test args["cmd"] == "ls -la"
+end
+
 @testset "OllamaSchema image messages" begin
     s = OllamaSchema()
     # 1x1 transparent PNG

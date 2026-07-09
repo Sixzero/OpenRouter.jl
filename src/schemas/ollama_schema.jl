@@ -20,6 +20,7 @@ build_url(::OllamaSchema, base_url::AbstractString, model_id::AbstractString, st
 function build_messages(::OllamaSchema, prompt, sys_msg)
     msgs = to_openai_messages(normalize_messages(prompt, sys_msg))
     for m in msgs
+        ollama_tool_call_arguments!(m)
         content = get(m, "content", nothing)
         content isa AbstractVector || continue
         texts = String[]
@@ -37,6 +38,28 @@ function build_messages(::OllamaSchema, prompt, sys_msg)
         isempty(images) || (m["images"] = images)
     end
     return msgs
+end
+
+# OpenAI encodes assistant `tool_calls[].function.arguments` as a JSON *string*, but
+# Ollama's native `/api/chat` expects a JSON *object* and its parser rejects the string
+# with "Value looks like object, but can't find closing '}' symbol" (a 400) on any tool-call
+# round-trip. Decode the string back to an object — the same normalization the Anthropic
+# (`tool_use.input`) and Gemini (`functionCall.args`) schemas already apply via
+# `get_arguments`. Rebuild each tool_call as an Any-typed dict: the incoming dicts may be
+# narrowly typed (e.g. Dict{String,String}), which can't hold the parsed-object arguments.
+function ollama_tool_call_arguments!(m::AbstractDict)
+    tcs = get(m, "tool_calls", nothing)
+    tcs isa AbstractVector || return m
+    m["tool_calls"] = map(tcs) do tc
+        (tc isa AbstractDict && get(tc, "function", nothing) isa AbstractDict &&
+            get(tc["function"], "arguments", nothing) isa AbstractString) || return tc
+        new_fn = Dict{String,Any}(tc["function"])
+        new_fn["arguments"] = get_arguments(tc)
+        new_tc = Dict{String,Any}(tc)
+        new_tc["function"] = new_fn
+        new_tc
+    end
+    return m
 end
 
 function build_payload(::OllamaSchema, prompt, model_id::AbstractString, sys_msg, stream::Bool=false; kwargs...)
