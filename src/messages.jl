@@ -4,12 +4,14 @@ struct UserMessage <: AbstractMessage
     content::AbstractString
     name::Union{Nothing, String}
     image_data::Union{Nothing, Vector{String}}  # base64 or data URLs
+    document_data::Union{Nothing, Vector{String}}  # data URLs: data:application/pdf;base64,...
     extras::Union{Nothing, Dict{Symbol, Any}}
-    function UserMessage(; content::AbstractString="", name=nothing, image_data=nothing, extras=nothing)
+    function UserMessage(; content::AbstractString="", name=nothing, image_data=nothing, document_data=nothing, extras=nothing)
         has_content = !isempty(content)
         has_image = image_data !== nothing && !isempty(image_data)
-        @assert has_content || has_image "UserMessage must have non-empty content or image_data"
-        new(content, name, image_data, extras)
+        has_document = document_data !== nothing && !isempty(document_data)
+        @assert has_content || has_image || has_document "UserMessage must have non-empty content, image_data, or document_data"
+        new(content, name, image_data, document_data, extras)
     end
 end
 
@@ -139,6 +141,37 @@ end
 
 const INVALID_IMAGE_NOTICE = "[Invalid image removed: corrupt or unsupported format]"
 
+# Anthropic native PDF documents: 32MB decoded / 100 pages per request.
+# Base64 chars for 32MB decoded: 32_000_000 / 3 * 4 ≈ 42.7M.
+const LLM_MAX_DOCUMENT_BASE64_CHARS = 42_000_000
+
+"""Extract and validate a PDF from a `data:application/pdf;base64,...` URL.
+Returns (media_type, base64_data) or nothing if invalid/unsupported.
+Validates base64 alphabet/padding over the whole payload, decodes only the first
+bytes for %PDF- magic-byte validation."""
+function extract_document_attributes(doc::AbstractString)::Union{Tuple{String,String}, Nothing}
+    startswith(doc, "data:") || (@warn "Invalid document: not a data URL"; return nothing)
+    parts = split(doc, ",", limit=2)
+    length(parts) == 2 || (@warn "Invalid document: malformed data URL"; return nothing)
+    meta = parts[1]
+    media_match = match(r"data:([^;]+)", meta)
+    media_type = media_match !== nothing ? lowercase(media_match.captures[1]) : ""
+    data = parts[2]
+    media_type != "application/pdf" && (@warn "Invalid document: unsupported type" media_type; return nothing)
+    occursin(";base64", meta) || (@warn "Invalid document: not base64-encoded"; return nothing)
+    length(data) < 8 && (@warn "Invalid document: base64 data too short" size=length(data); return nothing)
+    length(data) > LLM_MAX_DOCUMENT_BASE64_CHARS && (@warn "Invalid document: exceeds 32MB decoded limit" size=length(data); return nothing)
+    (length(data) % 4 == 0 && occursin(r"^[A-Za-z0-9+/]+={0,2}$", data)) ||
+        (@warn "Invalid document: malformed base64 payload" size=length(data); return nothing)
+    raw = try; base64decode(data[1:8]) catch; UInt8[] end
+    # %PDF- = 25 50 44 46 2D
+    length(raw) >= 5 && raw[1] == 0x25 && raw[2] == 0x50 && raw[3] == 0x44 && raw[4] == 0x46 && raw[5] == 0x2D && return (media_type, data)
+    @warn "Invalid document: bad magic bytes (not a PDF)" size=length(data)
+    return nothing
+end
+
+const INVALID_DOCUMENT_NOTICE = "[Invalid document removed: corrupt or unsupported format]"
+
 # === Converters for specific providers ===
 
 # OpenAI-style chat: Dict("role"=>"user/assistant/system","content"=>...)
@@ -176,15 +209,29 @@ function to_openai_messages(msgs::Vector{AbstractMessage})
         # Initialize message dict
         msg_dict = Dict{String, Any}("role" => role)
         
-        # Handle images for UserMessage
-        if m isa UserMessage && m.image_data !== nothing && !isempty(m.image_data)
+        # Handle images/documents for UserMessage
+        _has_img = m isa UserMessage && m.image_data !== nothing && !isempty(m.image_data)
+        _has_doc = m isa UserMessage && m.document_data !== nothing && !isempty(m.document_data)
+        if _has_img || _has_doc
             content = Any[]
             !isempty(m.content) && push!(content, Dict("type" => "text", "text" => m.content))
-            for img in m.image_data
-                if isnothing(extract_image_attributes(img))
-                    push!(content, Dict("type" => "text", "text" => INVALID_IMAGE_NOTICE))
-                else
-                    push!(content, Dict("type" => "image_url", "image_url" => Dict("url" => img)))
+            if _has_img
+                for img in m.image_data
+                    if isnothing(extract_image_attributes(img))
+                        push!(content, Dict("type" => "text", "text" => INVALID_IMAGE_NOTICE))
+                    else
+                        push!(content, Dict("type" => "image_url", "image_url" => Dict("url" => img)))
+                    end
+                end
+            end
+            if _has_doc
+                for doc in m.document_data
+                    result = extract_document_attributes(doc)
+                    if isnothing(result)
+                        push!(content, Dict("type" => "text", "text" => INVALID_DOCUMENT_NOTICE))
+                    else
+                        push!(content, Dict("type" => "file", "file" => Dict("filename" => "document.pdf", "file_data" => doc)))
+                    end
                 end
             end
             msg_dict["content"] = content
@@ -266,20 +313,38 @@ function to_anthropic_messages(msgs::Vector{AbstractMessage}; cache::Union{Nothi
                m isa AIMessage ? "assistant" :
                error("Unknown message type $(typeof(m)) for Anthropic schema")
 
-        # Handle images for UserMessage
-        if m isa UserMessage && m.image_data !== nothing && !isempty(m.image_data)
+        # Handle images/documents for UserMessage
+        _has_img = m isa UserMessage && m.image_data !== nothing && !isempty(m.image_data)
+        _has_doc = m isa UserMessage && m.document_data !== nothing && !isempty(m.document_data)
+        if _has_img || _has_doc
             content = Any[]
             !isempty(m.content) && push!(content, Dict{String, Any}("type" => "text", "text" => m.content))
-            for img in m.image_data
-                result = extract_image_attributes(img)
-                if isnothing(result)
-                    push!(content, Dict{String,Any}("type" => "text", "text" => INVALID_IMAGE_NOTICE))
-                else
-                    data_type, data = result
-                    push!(content, Dict("type" => "image",
-                        "source" => Dict("type" => "base64",
-                            "data" => data,
-                            "media_type" => data_type)))
+            if _has_img
+                for img in m.image_data
+                    result = extract_image_attributes(img)
+                    if isnothing(result)
+                        push!(content, Dict{String,Any}("type" => "text", "text" => INVALID_IMAGE_NOTICE))
+                    else
+                        data_type, data = result
+                        push!(content, Dict("type" => "image",
+                            "source" => Dict("type" => "base64",
+                                "data" => data,
+                                "media_type" => data_type)))
+                    end
+                end
+            end
+            if _has_doc
+                for doc in m.document_data
+                    result = extract_document_attributes(doc)
+                    if isnothing(result)
+                        push!(content, Dict{String,Any}("type" => "text", "text" => INVALID_DOCUMENT_NOTICE))
+                    else
+                        data_type, data = result
+                        push!(content, Dict("type" => "document",
+                            "source" => Dict("type" => "base64",
+                                "data" => data,
+                                "media_type" => data_type)))
+                    end
                 end
             end
         else
@@ -383,16 +448,31 @@ function to_gemini_contents(msgs::Vector{AbstractMessage})
                m isa AIMessage ? "model" :
                error("Unknown message type $(typeof(m)) for Gemini schema")
 
-        if m isa UserMessage && m.image_data !== nothing && !isempty(m.image_data)
+        _has_img = m isa UserMessage && m.image_data !== nothing && !isempty(m.image_data)
+        _has_doc = m isa UserMessage && m.document_data !== nothing && !isempty(m.document_data)
+        if _has_img || _has_doc
             parts = Any[]
             !isempty(m.content) && push!(parts, Dict("text" => m.content))
-            for img in m.image_data
-                result = extract_image_attributes(img)
-                if isnothing(result)
-                    push!(parts, Dict("text" => INVALID_IMAGE_NOTICE))
-                else
-                    data_type, data = result
-                    push!(parts, Dict("inline_data" => Dict("mime_type" => data_type, "data" => data)))
+            if _has_img
+                for img in m.image_data
+                    result = extract_image_attributes(img)
+                    if isnothing(result)
+                        push!(parts, Dict("text" => INVALID_IMAGE_NOTICE))
+                    else
+                        data_type, data = result
+                        push!(parts, Dict("inline_data" => Dict("mime_type" => data_type, "data" => data)))
+                    end
+                end
+            end
+            if _has_doc
+                for doc in m.document_data
+                    result = extract_document_attributes(doc)
+                    if isnothing(result)
+                        push!(parts, Dict("text" => INVALID_DOCUMENT_NOTICE))
+                    else
+                        data_type, data = result
+                        push!(parts, Dict("inline_data" => Dict("mime_type" => data_type, "data" => data)))
+                    end
                 end
             end
             push!(out, Dict("role" => role, "parts" => parts))
