@@ -391,6 +391,11 @@ function _open_sse_stream(cb::AbstractLLMStream, url, headers, input::String; ve
             end
         end
         HTTP.closeread(stream)
+        # Every supported schema signals completion explicitly (Anthropic message_stop,
+        # OpenAI [DONE]/finish_reason, Gemini finishReason, Ollama done, Response API
+        # response.completed). EOF before that marker means the connection died
+        # mid-response — surface it instead of treating the partial reply as success.
+        isdone || error("stream ended unexpectedly: EOF before done marker")
     end
     catch e
         idle_fired[] && !(e isa StreamIdleTimeoutError) && throw(StreamIdleTimeoutError(Float64(idle_timeout)))
