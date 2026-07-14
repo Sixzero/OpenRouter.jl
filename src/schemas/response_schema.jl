@@ -157,19 +157,24 @@ function extract_tokens(schema::ResponseSchema, response::Union{Dict, JSON3.Obje
     
     isnothing(usage) && return nothing
     
-    prompt_tokens = get(usage, "input_tokens", 0)
+    api_input_tokens = get(usage, "input_tokens", 0)
     completion_tokens = get(usage, "output_tokens", 0)
-    total_tokens = get(usage, "total_tokens", prompt_tokens + completion_tokens)
+    total_tokens = get(usage, "total_tokens", api_input_tokens + completion_tokens)
     
     # Extract detailed token counts
     input_details = get(usage, "input_tokens_details", Dict())
     output_details = get(usage, "output_tokens_details", Dict())
     
+    # Responses API input_tokens is the TOTAL input (cached included). Normalized
+    # TokenCounts contract: prompt_tokens = cache misses only, so subtract cache hits
+    # (otherwise cost and context-size consumers double-count cached input).
+    input_cache_read = get(input_details, "cached_tokens", 0)
+    
     return TokenCounts(
-        prompt_tokens = prompt_tokens,
+        prompt_tokens = api_input_tokens - input_cache_read,
         completion_tokens = completion_tokens,
         total_tokens = total_tokens,
-        input_cache_read = get(input_details, "cached_tokens", 0),
+        input_cache_read = input_cache_read,
         internal_reasoning = get(output_details, "reasoning_tokens", 0)
     )
 end
