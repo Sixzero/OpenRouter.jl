@@ -212,7 +212,7 @@ end
 Build the request payload for AnthropicSchema.
 """
 function build_payload(schema::AnthropicSchema, prompt, model_id::AbstractString, sys_msg,
-                       stream::Bool = false; max_tokens::Int=1000,
+                       stream::Bool = false; max_tokens::Int=4096,
                        cache::Union{Nothing,Symbol}=nothing,
                        kwargs...)
     messages, system_content = build_messages(schema, prompt, sys_msg; cache)
