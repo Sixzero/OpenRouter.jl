@@ -225,8 +225,9 @@ end
     end
 
     @testset "Consecutive ToolMessages with images (OpenAI)" begin
-        img1 = "data:image/png;base64,AAAA"
-        img2 = "data:image/png;base64,BBBB"
+        # Real 1x1 PNGs — extract_image_attributes validates magic bytes
+        img1 = "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAIAAACQd1PeAAAADElEQVR4nGP4z8AAAAMBAQDJ/pLvAAAAAElFTkSuQmCC"
+        img2 = "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAIAAACQd1PeAAAADElEQVR4nGNgYPgPAAEDAQAIicLsAAAAAElFTkSuQmCC"
         img_msgs = AbstractMessage[
             UserMessage(content="Read both"),
             AIMessage(content="", tool_calls=[
