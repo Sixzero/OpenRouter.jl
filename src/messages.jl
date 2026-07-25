@@ -39,6 +39,7 @@ Base.@kwdef struct ToolMessage <: AbstractMessage
     tool_call_id::String
     name::Union{Nothing, String} = nothing
     image_data::Union{Nothing, Vector{String}} = nothing  # base64 or data URLs
+    document_data::Union{Nothing, Vector{String}} = nothing  # data URLs: data:application/pdf;base64,...
     extras::Union{Nothing, Dict{Symbol, Any}} = nothing
 end
 
@@ -49,11 +50,12 @@ function get_arguments(tool_call::AbstractDict)::Dict{String,Any}
 end
 
 """Create a ToolMessage from a tool_call dict and string result."""
-ToolMessage(tool_call::Dict, content::AbstractString; image_data=nothing, extras=nothing) = ToolMessage(
+ToolMessage(tool_call::Dict, content::AbstractString; image_data=nothing, document_data=nothing, extras=nothing) = ToolMessage(
     content = content,
     tool_call_id = tool_call["id"],
     name = get(tool_call["function"], "name", nothing),
     image_data = image_data,
+    document_data = document_data,
     extras = extras
 )
 
@@ -177,12 +179,12 @@ const INVALID_DOCUMENT_NOTICE = "[Invalid document removed: corrupt or unsupport
 # OpenAI-style chat: Dict("role"=>"user/assistant/system","content"=>...)
 function to_openai_messages(msgs::Vector{AbstractMessage})
     out = Any[]
-    pending_images = Any[]  # collect images from consecutive ToolMessages
+    pending_images = Any[]  # collect images/documents from consecutive ToolMessages
     for (i, m) in enumerate(msgs)
         # Handle ToolMessage separately (different structure)
         if m isa ToolMessage
             push!(out, Dict("role" => "tool", "tool_call_id" => m.tool_call_id, "content" => m.content))
-            # OpenAI doesn't support images in tool results; defer to after all consecutive tool messages
+            # OpenAI doesn't support images/files in tool results; defer to after all consecutive tool messages
             if m.image_data !== nothing && !isempty(m.image_data)
                 for img in m.image_data
                     if isnothing(extract_image_attributes(img))
@@ -192,7 +194,16 @@ function to_openai_messages(msgs::Vector{AbstractMessage})
                     end
                 end
             end
-            # Flush pending images when next message is not a ToolMessage
+            if m.document_data !== nothing && !isempty(m.document_data)
+                for doc in m.document_data
+                    if isnothing(extract_document_attributes(doc))
+                        push!(pending_images, Dict("type" => "text", "text" => INVALID_DOCUMENT_NOTICE))
+                    else
+                        push!(pending_images, Dict("type" => "file", "file" => Dict("filename" => "document.pdf", "file_data" => doc)))
+                    end
+                end
+            end
+            # Flush pending images/documents when next message is not a ToolMessage
             next = i < length(msgs) ? msgs[i + 1] : nothing
             if !(next isa ToolMessage) && !isempty(pending_images)
                 push!(out, Dict("role" => "user", "content" => pending_images))
@@ -275,18 +286,34 @@ function to_anthropic_messages(msgs::Vector{AbstractMessage}; cache::Union{Nothi
 
         # ToolMessage → tool_result block in a user message
         if m isa ToolMessage
-            # Anthropic natively supports images in tool_result content arrays
-            if m.image_data !== nothing && !isempty(m.image_data)
+            # Anthropic natively supports images and documents in tool_result content arrays
+            _tm_has_img = m.image_data !== nothing && !isempty(m.image_data)
+            _tm_has_doc = m.document_data !== nothing && !isempty(m.document_data)
+            if _tm_has_img || _tm_has_doc
                 tr_content = Any[]
                 !isempty(m.content) && push!(tr_content, Dict{String,Any}("type" => "text", "text" => m.content))
-                for img in m.image_data
-                    result = extract_image_attributes(img)
-                    if isnothing(result)
-                        push!(tr_content, Dict{String,Any}("type" => "text", "text" => INVALID_IMAGE_NOTICE))
-                    else
-                        data_type, data = result
-                        push!(tr_content, Dict{String,Any}("type" => "image",
-                            "source" => Dict{String,Any}("type" => "base64", "data" => data, "media_type" => data_type)))
+                if _tm_has_img
+                    for img in m.image_data
+                        result = extract_image_attributes(img)
+                        if isnothing(result)
+                            push!(tr_content, Dict{String,Any}("type" => "text", "text" => INVALID_IMAGE_NOTICE))
+                        else
+                            data_type, data = result
+                            push!(tr_content, Dict{String,Any}("type" => "image",
+                                "source" => Dict{String,Any}("type" => "base64", "data" => data, "media_type" => data_type)))
+                        end
+                    end
+                end
+                if _tm_has_doc
+                    for doc in m.document_data
+                        result = extract_document_attributes(doc)
+                        if isnothing(result)
+                            push!(tr_content, Dict{String,Any}("type" => "text", "text" => INVALID_DOCUMENT_NOTICE))
+                        else
+                            data_type, data = result
+                            push!(tr_content, Dict{String,Any}("type" => "document",
+                                "source" => Dict{String,Any}("type" => "base64", "data" => data, "media_type" => data_type)))
+                        end
                     end
                 end
                 tool_result_content = tr_content
@@ -420,13 +447,24 @@ function to_gemini_contents(msgs::Vector{AbstractMessage})
                     "response" => Dict{String,Any}("content" => m.content)
                 )
             )
-            # Build image parts if present
+            # Build image/document parts if present
             img_parts = Any[]
             if m.image_data !== nothing && !isempty(m.image_data)
                 for img in m.image_data
                     result = extract_image_attributes(img)
                     if isnothing(result)
                         push!(img_parts, Dict{String,Any}("text" => INVALID_IMAGE_NOTICE))
+                    else
+                        data_type, data = result
+                        push!(img_parts, Dict{String,Any}("inline_data" => Dict{String,Any}("mime_type" => data_type, "data" => data)))
+                    end
+                end
+            end
+            if m.document_data !== nothing && !isempty(m.document_data)
+                for doc in m.document_data
+                    result = extract_document_attributes(doc)
+                    if isnothing(result)
+                        push!(img_parts, Dict{String,Any}("text" => INVALID_DOCUMENT_NOTICE))
                     else
                         data_type, data = result
                         push!(img_parts, Dict{String,Any}("inline_data" => Dict{String,Any}("mime_type" => data_type, "data" => data)))

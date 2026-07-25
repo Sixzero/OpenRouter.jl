@@ -252,6 +252,46 @@ end
         @test out[6]["role"] == "assistant"
     end
 
+    @testset "ToolMessage with document_data (PDF)" begin
+        pdf = "data:application/pdf;base64,JVBERi0xLjQgbWluaW1hbA=="
+        pdf_msgs = AbstractMessage[
+            UserMessage(content="Read this PDF"),
+            AIMessage(content="", tool_calls=[
+                Dict("id" => "d1", "type" => "function",
+                     "function" => Dict("name" => "read", "arguments" => "{\"path\":\"a.pdf\"}"))]),
+            ToolMessage(content="", tool_call_id="d1", name="read", document_data=[pdf]),
+            AIMessage(content="It's a PDF.")
+        ]
+
+        @testset "Anthropic" begin
+            out = to_anthropic_messages(pdf_msgs)
+            tr = out[3]["content"][1]  # user w/ tool_result
+            @test tr["type"] == "tool_result"
+            @test tr["content"] isa Vector
+            doc = tr["content"][end]
+            @test doc["type"] == "document"
+            @test doc["source"]["media_type"] == "application/pdf"
+            @test doc["source"]["data"] == "JVBERi0xLjQgbWluaW1hbA=="
+        end
+
+        @testset "OpenAI" begin
+            out = to_openai_messages(pdf_msgs)
+            @test out[3]["role"] == "tool"
+            @test out[4]["role"] == "user"
+            @test out[4]["content"][1]["type"] == "file"
+            @test out[4]["content"][1]["file"]["file_data"] == pdf
+        end
+
+        @testset "Gemini" begin
+            out = to_gemini_contents(pdf_msgs)
+            tr = out[3]
+            @test tr["role"] == "user"
+            @test haskey(tr["parts"][1], "functionResponse")
+            @test tr["parts"][2]["inline_data"]["mime_type"] == "application/pdf"
+            @test tr["parts"][2]["inline_data"]["data"] == "JVBERi0xLjQgbWluaW1hbA=="
+        end
+    end
+
     @testset "AIMessage without tool_calls unchanged" begin
         plain = AbstractMessage[
             UserMessage(content="Hello"),
