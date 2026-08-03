@@ -16,8 +16,7 @@ setup_cli_proxy!(; mutate=true)
         @test "text" in types
 
         msg = AIMessage(raw.schema, raw.result; endpoint=raw.provider_endpoint)
-        # Redacted thinking by proxy: field exists but is empty string.
-        @test msg.reasoning !== nothing
+        @test msg.reasoning !== nothing && !isempty(msg.reasoning)
         # Anthropic does not expose reasoning tokens in usage -> 0 expected.
         @test msg.tokens.internal_reasoning == 0
     end
@@ -31,14 +30,19 @@ setup_cli_proxy!(; mutate=true)
         @test msg.tokens.internal_reasoning == 0
     end
 
-    @testset "opus-4.7(xhigh) — currently NO thinking content" begin
-        raw = aigen_raw(PROMPT, "anthropic:anthropic/claude-opus-4.7(xhigh)"; max_tokens=16000)
+    @testset "opus-4.7(xhigh) returns thinking summary" begin
+        # Requires the `interleaved-thinking-2025-05-14` beta header (set by
+        # override_providers! in OpenRouterCLIProxyAPI); without it opus models
+        # return thinking blocks with empty text.
+        # Opus thinking is adaptive: use a compute-style prompt that reliably
+        # triggers it (the primes proof is sometimes answered without thinking).
+        COMPUTE_PROMPT = "How many primes between 300 and 360? Verify each candidate carefully."
+        raw = aigen_raw(COMPUTE_PROMPT, "anthropic:anthropic/claude-opus-4.7(xhigh)"; max_tokens=16000)
         types = [get(b, "type", nothing) for b in get(raw.result, "content", [])]
-        # Document current behavior: opus-4.7 returns no thinking blocks even with (xhigh).
-        @test !("thinking" in types)
+        @test "thinking" in types
 
         msg = AIMessage(raw.schema, raw.result; endpoint=raw.provider_endpoint)
-        @test msg.reasoning === nothing
+        @test msg.reasoning !== nothing && !isempty(msg.reasoning)
         @test msg.tokens.internal_reasoning == 0
     end
 
