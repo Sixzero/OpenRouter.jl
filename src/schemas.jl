@@ -173,6 +173,7 @@ end
 function convert_tool_choice(::AnthropicSchema, tool_choice::AbstractString)
     tool_choice == "required" && return Dict("type" => "any")
     tool_choice == "auto"     && return Dict("type" => "auto")
+    tool_choice == "none"     && return Dict("type" => "none")
     return tool_choice
 end
 
