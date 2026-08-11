@@ -410,9 +410,15 @@ function get_provider_info(provider_slug_or_alias::AbstractString)::Union{Provid
     provider_slug = resolve_model_alias(provider_slug_or_alias)
     slug = lowercase(provider_slug)
     info = get(PROVIDER_INFO, slug, nothing)
-    # Fallback: try hyphenless form (e.g. "moonshot-ai" -> "moonshotai") to handle
-    # OpenRouter's inconsistent provider_name casing/hyphenation across models.
-    info === nothing && (info = get(PROVIDER_INFO, replace(slug, "-" => ""), nothing))
+    # Fallback: try the separator-free form (e.g. "moonshot-ai" -> "moonshotai",
+    # "z-ai" -> "z.ai") to handle OpenRouter's inconsistent provider_name
+    # casing/punctuation across models.
+    if info === nothing
+        target = replace(slug, r"[-._]" => "")
+        for (k, v) in PROVIDER_INFO
+            replace(lowercase(k), r"[-._]" => "") == target && (info = v; break)
+        end
+    end
     return info
 end
 
