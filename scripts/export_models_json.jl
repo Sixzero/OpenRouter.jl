@@ -461,7 +461,8 @@ function build_models_data()
 
     # Append subscription/native provider catalogs not represented as routable
     # OpenRouter endpoints.
-    merge_model_specs!(specs, build_ollama_specs("ollama_cloud", specs))
+    # Ollama Cloud subscription cancelled — OpenCode Go covers these models.
+    # merge_model_specs!(specs, build_ollama_specs("ollama_cloud", specs))
     merge_model_specs!(specs, build_opencode_go_specs("opencode_go", specs))
 
     # Append proxy-only models (cliproxyapi OAuth) missing from the catalog.
