@@ -257,9 +257,9 @@ function parse_provider_model(provider_model::AbstractString)
         return provider_info, transformed_model_id, create_stub_endpoint(provider_name, lookup_model_id)
     end
 
-    # Ollama (local + cloud, and any custom Ollama host) has no OpenRouter metadata;
-    # skip the lookup entirely and use a zero-priced stub endpoint for cost tracking.
-    if provider_info.schema isa OllamaSchema
+    # Subscription/native catalogs (Ollama, OpenCode Go) have no OpenRouter endpoint
+    # metadata. Their model IDs are validated by their own /models endpoint/export.
+    if provider_info.schema isa OllamaSchema || lc_name == "opencode_go"
         transformed_model_id = transform_model_name(provider_info, lookup_model_id) * model_suffix
         return provider_info, transformed_model_id, create_stub_endpoint_zero_pricing(provider_name, lookup_model_id)
     end

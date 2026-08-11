@@ -336,6 +336,65 @@ function build_ollama_specs(provider_slug::AbstractString, catalog_specs::Vector
     return specs
 end
 
+"""Merge native-provider specs by model id, combining endpoints on collisions."""
+function merge_model_specs!(specs::Vector, incoming::Vector)
+    by_id = Dict(String(spec["id"]) => spec for spec in specs)
+    for spec in incoming
+        existing = get(by_id, String(spec["id"]), nothing)
+        if existing === nothing
+            push!(specs, spec)
+            by_id[String(spec["id"])] = spec
+        else
+            append!(existing["endpoints"], spec["endpoints"])
+        end
+    end
+    return specs
+end
+
+# ---------- OpenCode Go subscription catalog ----------
+
+const OPENCODE_GO_EXCLUDED_MODELS = Set(["gpt-5.6-luna", "grok-4.5"])
+
+"""
+Build bare model specs for OpenCode Go. Like Ollama Cloud, this is a
+subscription catalog, so pricing is zero and routing uses the provider's own
+model IDs. Models explicitly excluded from the product catalog are omitted.
+"""
+function build_opencode_go_specs(provider_slug::AbstractString="opencode_go")
+    local raw
+    try
+        raw = list_native_models(provider_slug)
+    catch err
+        @warn "Skipping OpenCode Go models; provider unreachable" provider=provider_slug exception=err
+        return Any[]
+    end
+
+    specs = Any[]
+    for m in raw
+        model_id = String(get(m, "id", ""))
+        isempty(model_id) && continue
+        model_id in OPENCODE_GO_EXCLUDED_MODELS && continue
+
+        endpoint = Dict(
+            "provider_name" => provider_slug,
+            "endpoint_name" => model_id,
+            "context_length" => nothing,
+            "max_completion_tokens" => nothing,
+            "pricing" => Dict("prompt" => 0.0, "completion" => 0.0),
+            "tag" => "$provider_slug/$model_id",
+        )
+        push!(specs, Dict(
+            "id" => model_id,
+            "name" => model_id,
+            "created" => get(m, "created", nothing),
+            "endpoints" => Any[endpoint],
+        ))
+    end
+
+    println("Kept $(length(specs)) $provider_slug model(s); excluded $(length(OPENCODE_GO_EXCLUDED_MODELS))")
+    return specs
+end
+
 # ---------- Extra proxy-only models ----------
 #
 # Models served via cliproxyapi (OAuth) that are NOT in the OpenRouter catalog,
@@ -388,9 +447,10 @@ function build_models_data()
 
     println("\nTotal excluded endpoints: $excluded_endpoints_count")
 
-    # Append native Ollama Cloud models (not in the OpenRouter catalog), with
-    # pricing inherited from their matching catalog twins.
-    append!(specs, build_ollama_specs("ollama_cloud", specs))
+    # Append subscription/native provider catalogs not represented as routable
+    # OpenRouter endpoints.
+    merge_model_specs!(specs, build_ollama_specs("ollama_cloud", specs))
+    merge_model_specs!(specs, build_opencode_go_specs())
 
     # Append proxy-only models (cliproxyapi OAuth) missing from the catalog.
     existing_ids = Set(d["id"] for d in specs)

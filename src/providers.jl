@@ -112,6 +112,14 @@ const PROVIDER_INFO = Dict{String,ProviderInfo}(
         moonshotai_model_transform,
         ChatCompletionSchema(),
         "Standard OpenAI-compatible API"),
+    "opencode_go" => ProviderInfo(
+        "https://opencode.ai/zen/go/v1",
+        "Bearer",
+        "OPENCODE_API_KEY",
+        Dict{String,String}(),
+        nothing,
+        ChatCompletionSchema(),
+        "OpenCode Go subscription; OpenAI-compatible API with bare model IDs"),
     "minimax" => ProviderInfo(
         "https://api.minimaxi.chat/v1",
         "Bearer",

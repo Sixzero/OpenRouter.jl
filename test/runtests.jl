@@ -221,6 +221,9 @@ using Aqua
     # Ollama -> OpenRouter catalog price matching (export script)
     include("test_ollama_pricing_match.jl")
 
+    # OpenCode Go native provider + export catalog
+    include("test_opencode_go_provider.jl")
+
     # Echo server tests (all schemas)
     include("test_echo_server.jl")
 end
