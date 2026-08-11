@@ -117,7 +117,7 @@ const PROVIDER_INFO = Dict{String,ProviderInfo}(
         "Bearer",
         "OPENCODE_API_KEY",
         Dict{String,String}(),
-        nothing,
+        opencode_go_model_transform,
         ChatCompletionSchema(),
         "OpenCode Go subscription; OpenAI-compatible API with bare model IDs"),
     "minimax" => ProviderInfo(

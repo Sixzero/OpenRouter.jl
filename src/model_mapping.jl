@@ -189,6 +189,11 @@ function moonshotai_model_transform(model_id::AbstractString)::AbstractString
     return startswith(model_id, "moonshotai/") ? model_id[length("moonshotai/")+1:end] : model_id
 end
 
+"""OpenCode Go expects bare IDs, while the shared catalog uses author/model IDs."""
+function opencode_go_model_transform(model_id::AbstractString)::AbstractString
+    return last(split(model_id, "/"))
+end
+
 """
     minimax_model_transform(model_id::String)::String
 
@@ -211,9 +216,12 @@ end
 """
     ollama_model_transform(model_id::String)::String
 
-Transform model IDs for Ollama. Currently returns unchanged.
+Transform namespaced catalog IDs into the bare IDs expected by Ollama.
 """
 function ollama_model_transform(model_id::AbstractString)::AbstractString
+    for prefix in ("ollama_cloud/", "ollama/")
+        startswith(model_id, prefix) && return model_id[length(prefix)+1:end]
+    end
     return model_id
 end
 

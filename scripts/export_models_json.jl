@@ -316,13 +316,10 @@ function build_ollama_specs(provider_slug::AbstractString, catalog_specs::Vector
             "pricing" => twin_ep["pricing"],          # inherited per-token pricing
             "tag" => "$provider_slug/$model_id",
         )
-        # `id` is BARE (no provider prefix); the frontend builds the final slug as
-        # `${provider_name}:${id}` from the selected endpoint, matching OpenRouter
-        # catalog entries. A prefixed id here would double-prefix to
-        # `ollama_cloud:ollama_cloud:...`.
+        catalog_id = "$provider_slug/$model_id"
         push!(specs, Dict(
-            "id" => model_id,
-            "name" => model_id,
+            "id" => catalog_id,
+            "name" => catalog_id,
             "created" => created,
             "endpoints" => Any[endpoint],
         ))
@@ -356,11 +353,11 @@ end
 const OPENCODE_GO_EXCLUDED_MODELS = Set(["gpt-5.6-luna", "grok-4.5"])
 
 """
-Build bare model specs for OpenCode Go. Like Ollama Cloud, this is a
-subscription catalog, so pricing is zero and routing uses the provider's own
-model IDs. Models explicitly excluded from the product catalog are omitted.
+Build namespaced model specs for OpenCode Go. Pricing and context are inherited
+from matching OpenRouter catalog models, like Ollama Cloud. Unmatched models are
+dropped rather than incorrectly advertised as free.
 """
-function build_opencode_go_specs(provider_slug::AbstractString="opencode_go")
+function build_opencode_go_specs(provider_slug::AbstractString, catalog_specs::Vector)
     local raw
     try
         raw = list_native_models(provider_slug)
@@ -369,29 +366,44 @@ function build_opencode_go_specs(provider_slug::AbstractString="opencode_go")
         return Any[]
     end
 
+    catalog_by_id = Dict(d["id"] => d for d in catalog_specs)
+    catalog_ids = collect(keys(catalog_by_id))
     specs = Any[]
+    dropped = String[]
     for m in raw
         model_id = String(get(m, "id", ""))
         isempty(model_id) && continue
         model_id in OPENCODE_GO_EXCLUDED_MODELS && continue
 
+        match_id = find_catalog_match(model_id, catalog_ids)
+        if match_id === nothing
+            push!(dropped, model_id)
+            continue
+        end
+        twin_ep = catalog_by_id[match_id]["endpoints"][1]
         endpoint = Dict(
             "provider_name" => provider_slug,
             "endpoint_name" => model_id,
-            "context_length" => nothing,
-            "max_completion_tokens" => nothing,
-            "pricing" => Dict("prompt" => 0.0, "completion" => 0.0),
+            "context_length" => twin_ep["context_length"],
+            "max_completion_tokens" => twin_ep["max_completion_tokens"],
+            "pricing" => twin_ep["pricing"],
             "tag" => "$provider_slug/$model_id",
         )
+        # Use the matched canonical OpenRouter id so this provider is merged into
+        # the existing model row instead of creating a duplicate model.
         push!(specs, Dict(
-            "id" => model_id,
-            "name" => model_id,
+            "id" => match_id,
+            "name" => catalog_by_id[match_id]["name"],
             "created" => get(m, "created", nothing),
             "endpoints" => Any[endpoint],
         ))
     end
 
-    println("Kept $(length(specs)) $provider_slug model(s); excluded $(length(OPENCODE_GO_EXCLUDED_MODELS))")
+    if !isempty(dropped)
+        println("\n⚠️  Dropping $(length(dropped)) $provider_slug model(s) with no catalog price match:")
+        foreach(d -> println("  - $d"), dropped)
+    end
+    println("Kept $(length(specs)) $provider_slug model(s) with inherited pricing; excluded $(length(OPENCODE_GO_EXCLUDED_MODELS))")
     return specs
 end
 
@@ -450,7 +462,7 @@ function build_models_data()
     # Append subscription/native provider catalogs not represented as routable
     # OpenRouter endpoints.
     merge_model_specs!(specs, build_ollama_specs("ollama_cloud", specs))
-    merge_model_specs!(specs, build_opencode_go_specs())
+    merge_model_specs!(specs, build_opencode_go_specs("opencode_go", specs))
 
     # Append proxy-only models (cliproxyapi OAuth) missing from the catalog.
     existing_ids = Set(d["id"] for d in specs)

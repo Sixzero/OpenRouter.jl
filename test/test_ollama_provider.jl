@@ -20,7 +20,9 @@ using OpenRouter: get_provider_info, extract_provider_from_model, OllamaSchema,
 
     # Model parsing with double colon
     @test extract_provider_from_model("ollama:smollm:360m") == "ollama"
-    @test extract_provider_from_model("ollama_cloud:gpt-oss:20b") == "ollama_cloud"
+    @test extract_provider_from_model("ollama_cloud:ollama_cloud/gpt-oss:20b") == "ollama_cloud"
+    @test OpenRouter.ollama_model_transform("ollama_cloud/gpt-oss:20b") == "gpt-oss:20b"
+    @test OpenRouter.ollama_model_transform("ollama/llama3.2") == "llama3.2"
 end
 
 @testset "OllamaSchema payload/url" begin

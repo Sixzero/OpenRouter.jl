@@ -70,20 +70,22 @@ function build_payload(::ChatCompletionSchema, prompt, model_id::AbstractString,
         payload["stream_options"] = Dict("include_usage" => true)
     end
 
-    # Moonshot's kimi-k2.6 only accepts top_p=0.95 and rejects temperature unless
-    # it is the implicit default. Clamp top_p, drop temperature.
-    # Case-insensitive: model_id can arrive as "kimi-k2.6", "Kimi-K2.6", or prefixed.
-    clamp_sampling = occursin("kimi-k2.6", lowercase(model_id))
+    # Some Kimi models only accept top_p=0.95. Kimi K2.6 additionally rejects
+    # temperature unless it is the implicit default. Case-insensitive and works
+    # for both bare and provider-prefixed model IDs.
+    model_lower = lowercase(model_id)
+    fixed_top_p = occursin("kimi-k2.6", model_lower) || occursin("kimi-k3", model_lower)
+    drop_temperature = occursin("kimi-k2.6", model_lower)
 
     # Add any additional kwargs (convert tools if present)
     for (k, v) in kwargs
         if k == :tools
             v === nothing && continue
             payload["tools"] = convert_tools(ChatCompletionSchema(), v)
-        elseif clamp_sampling && k == :temperature
+        elseif drop_temperature && k == :temperature
             @warn "Dropping `temperature` for $model_id (provider only allows implicit default)." maxlog=1
             continue
-        elseif clamp_sampling && k == :top_p && v != 0.95
+        elseif fixed_top_p && k == :top_p && v != 0.95
             @warn "Clamping `top_p` to 0.95 for $model_id (only fixed value allowed)." maxlog=1
             payload["top_p"] = 0.95
         else
