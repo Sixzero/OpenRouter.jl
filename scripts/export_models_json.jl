@@ -350,7 +350,7 @@ end
 
 # ---------- OpenCode Go subscription catalog ----------
 
-const OPENCODE_GO_EXCLUDED_MODELS = Set(["gpt-5.6-luna", "grok-4.5"])
+const OPENCODE_GO_EXCLUDED_MODELS = Set(["gpt-5.6-luna", "grok-4.5", "grok-4.6"])
 
 """
 Build namespaced model specs for OpenCode Go. Pricing and context are inherited
