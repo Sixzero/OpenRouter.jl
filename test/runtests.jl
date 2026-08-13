@@ -28,9 +28,9 @@ using Aqua
     end
     
     @testset "Provider model parsing" begin
-        provider_info, model_id, endpoint = OpenRouter.parse_provider_model("Together:moonshotai/kimi-k2-thinking")
+        provider_info, model_id, endpoint = OpenRouter.parse_provider_model("Together:meta-llama/llama-3.3-70b-instruct")
         @test provider_info.base_url == "https://api.together.xyz/v1"
-        @test model_id == "moonshotai/kimi-k2-thinking"
+        @test model_id == "meta-llama/llama-3.3-70b-instruct"
         @test endpoint isa OpenRouter.ProviderEndpoint
     end
 
