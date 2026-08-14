@@ -68,7 +68,7 @@ const EXCLUDED_PROVIDERS = Set([
 const EXCLUDED_PROVIDER_MODELS = Dict{String,Set{String}}(
     "cerebras"    => Set(["qwen/qwen3-32b", "google/gemma-4-31b-it"]),
     "together"    => Set(["meta-llama/llama-4-scout"]),
-    "sambanova"   => Set(["google/gemma-4-31b-it"]),
+    "sambanova"   => Set(["google/gemma-4-31b-it", "minimax/minimax-m2.7"]),
     "chutes"      => Set(["moonshotai/kimi-k3"]),
     "groq"        => Set(["minimax/minimax-m2.7"]),
     "siliconflow" => Set(["deepseek/deepseek-v4-flash-0731"]),
@@ -134,6 +134,10 @@ const SUPERSEDED_MODELS = Set([
     "openai/gpt-5.3-codex", "openai/gpt-5.4", "openai/gpt-5.4-mini", "openai/gpt-5.4-nano",
     "openai/gpt-5.4-pro", "openai/gpt-5.4-image-2",
     "openai/gpt-audio", "openai/gpt-audio-mini", "openai/gpt-chat-latest",
+    # Phantom OpenAI variants: the native API lists gpt-5.6-luna/sol/terra but no
+    # "-pro" sibling (only 5.5 has a -pro), and each 404s with "does not exist"
+    # while the real ids merely report no credits. OpenAI is the only host.
+    "openai/gpt-5.6-luna-pro", "openai/gpt-5.6-sol-pro", "openai/gpt-5.6-terra-pro",
     # gemini: keep only text-chat flagships — 3.7-flash + 3.1-pro-preview.
     # Drop 2.5-pro (superseded by 3.1-pro) and all image/lite/customtools/older
     # flash/pro variants.
