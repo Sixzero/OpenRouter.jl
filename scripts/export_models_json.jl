@@ -11,6 +11,7 @@ const EXCLUDED_PROVIDERS = Set([
     "azure",
     "claude-platform-on-aws",
     "cloudflare",
+    "coreweave",   # no API key, not in PROVIDER_INFO — can't natively route
     "friendli",
     "google",
     "io-net",
@@ -107,10 +108,10 @@ is_variant_model(model_id::AbstractString) =
 # Pre-cutoff models we keep anyway (still good AND referenced by the frontend).
 const KEEP_OLD_MODELS = Set([
     "anthropic/claude-haiku-4.5",
-    "google/gemini-2.5-pro",
 ])
 
-# Post-cutoff models to drop because a newer sibling supersedes them.
+# Post-cutoff models to drop because a newer sibling supersedes them, or because
+# they aren't worth shipping (weak family, non-chat, off-catalog junk).
 const SUPERSEDED_MODELS = Set([
     "anthropic/claude-sonnet-4.6",
     # qwen: keep 3.6+ only
@@ -126,6 +127,49 @@ const SUPERSEDED_MODELS = Set([
     "minimax/minimax-m2-her", "minimax/minimax-m2.5",
     # stepfun: keep 3.7+
     "stepfun/step-3.5-flash",
+    # deepseek: keep the undated rolling alias (native API maps to the latest
+    # checkpoint anyway, and it has more hosts); drop frozen dated snapshots.
+    "deepseek/deepseek-v4-flash-0731", "deepseek/deepseek-v4-pro-0813",
+    # openai: keep gpt-5.5+; drop 5.3/5.4 tier and non-chat audio/latest
+    "openai/gpt-5.3-codex", "openai/gpt-5.4", "openai/gpt-5.4-mini", "openai/gpt-5.4-nano",
+    "openai/gpt-5.4-pro", "openai/gpt-5.4-image-2",
+    "openai/gpt-audio", "openai/gpt-audio-mini", "openai/gpt-chat-latest",
+    # gemini: keep only text-chat flagships — 3.7-flash + 3.1-pro-preview.
+    # Drop 2.5-pro (superseded by 3.1-pro) and all image/lite/customtools/older
+    # flash/pro variants.
+    "google/gemini-2.5-pro",
+    "google/gemini-3.1-pro-preview-customtools",
+    "google/gemini-3.1-flash-image", "google/gemini-3.1-flash-image-preview",
+    "google/gemini-3.1-flash-lite", "google/gemini-3.1-flash-lite-preview",
+    "google/gemini-3.1-flash-lite-image", "google/gemini-3-pro-image",
+    "google/gemini-3.5-flash", "google/gemini-3.5-flash-lite", "google/gemini-3.6-flash",
+    # anthropic: all opus "-fast" are phantom (404 on the native API — "fast" is
+    # an OpenRouter routing tier, not a real model id). Anthropic is the only
+    # host, so listing them here drops them entirely.
+    "anthropic/claude-opus-4.7-fast", "anthropic/claude-opus-4.8-fast", "anthropic/claude-opus-5-fast",
+    # dropped: weak/off-catalog
+    "ibm-granite/granite-4.1-8b",   # weak 8b
+    "google/lyria-3-clip-preview", "google/lyria-3-pro-preview",  # music-gen, not chat
+])
+
+# Niche models we still ship but hide from the main list: the frontend renders
+# them behind an "exotic models" disclosure. These are single-host, from labs
+# most users won't recognise — but several benchmark near-frontier (KAT-Coder-Pro
+# V2 ~79.6% SWE-bench Verified, LongCat-2.0 59.5 SWE-bench Pro, Fugu Ultra leads
+# 10/11 vendor-reported benchmarks, Laguna S 2.1 78.5 SWE-Multilingual), so
+# dropping them outright would lose real capability. Marked `"exotic": true`.
+const EXOTIC_MODELS = Set([
+    "kwaipilot/kat-coder-pro-v2",
+    "meituan/longcat-2.0",
+    "sakana/fugu-ultra", "sakana/sakana-namazu",
+    "poolside/laguna-s-2.1", "poolside/laguna-xs-2.1",
+    "meta/muse-spark-1.1", "meta/muse-spark-1.2", "meta/muse-glimmer-30b",
+    "inclusionai/ling-2.6-1t", "inclusionai/ling-2.6-flash",
+    "inclusionai/ling-3.0-flash", "inclusionai/ring-2.6-1t",
+    "nex-agi/nex-n2-pro",
+    "nvidia/nemotron-3-super-120b-a12b", "nvidia/nemotron-3-ultra-550b-a55b",
+    "nvidia/nemotron-3.5-lightning",
+    "thinkingmachines/inkling", "thinkingmachines/inkling-small",
 ])
 
 """
@@ -271,6 +315,7 @@ function process_model(m::OpenRouterModel, i::Int, total::Int)
         "created" => m.created,
         "endpoints" => ep_dicts
     )
+    m.id in EXOTIC_MODELS && (spec["exotic"] = true)
 
     return spec, excluded_count
 end
@@ -551,6 +596,10 @@ function build_models_data()
     filter!(d -> !isempty(d["endpoints"]), specs)
 
     println("\nTotal excluded endpoints: $excluded_endpoints_count")
+
+    exotic = filter(d -> get(d, "exotic", false) === true, specs)
+    println("Flagged $(length(exotic)) exotic model(s) (hidden behind the frontend's disclosure):")
+    foreach(d -> println("  ~ $(d["id"])"), exotic)
 
     # Sort models alphabetically by id for consistent ordering
     sort!(specs, by=d -> d["id"])
