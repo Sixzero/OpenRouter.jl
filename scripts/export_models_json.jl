@@ -91,6 +91,56 @@ function is_excluded_owner(model_id::AbstractString)
     return owner in EXCLUDED_MODEL_OWNERS
 end
 
+# ---------- Freshness filtering ----------
+#
+# Ship a lean, current catalog: keep only models released on/after FRESH_CUTOFF
+# (every serious lab has a 2026 model), plus a short allow-list of still-good
+# older models that the frontend references. On top of the date cut, drop
+# specific 2026 models that a newer sibling has already superseded (version
+# thresholds: glm 5.2, kimi k3, grok 4.5, minimax m2.7, qwen 3.6, stepfun 3.7).
+const FRESH_CUTOFF = DateTime(2026, 1, 1)
+
+"True for async/free endpoint variants (`…:batch`, `…:free`) we never ship."
+is_variant_model(model_id::AbstractString) =
+    endswith(model_id, ":batch") || endswith(model_id, ":free")
+
+# Pre-cutoff models we keep anyway (still good AND referenced by the frontend).
+const KEEP_OLD_MODELS = Set([
+    "anthropic/claude-haiku-4.5",
+    "google/gemini-2.5-pro",
+])
+
+# Post-cutoff models to drop because a newer sibling supersedes them.
+const SUPERSEDED_MODELS = Set([
+    "anthropic/claude-sonnet-4.6",
+    # qwen: keep 3.6+ only
+    "qwen/qwen3.5-122b-a10b", "qwen/qwen3.5-27b", "qwen/qwen3.5-35b-a3b",
+    "qwen/qwen3.5-397b-a17b", "qwen/qwen3.5-9b", "qwen/qwen3-coder-next",
+    # glm: keep 5.2 only
+    "z-ai/glm-4.7-flash", "z-ai/glm-5", "z-ai/glm-5-turbo", "z-ai/glm-5v-turbo", "z-ai/glm-5.1",
+    # kimi: keep k3 only
+    "moonshotai/kimi-k2.5", "moonshotai/kimi-k2.6", "moonshotai/kimi-k2.7-code",
+    # grok: keep 4.5+
+    "x-ai/grok-4.20", "x-ai/grok-4.20-multi-agent", "x-ai/grok-4.3", "x-ai/grok-build-0.1",
+    # minimax: keep m2.7+
+    "minimax/minimax-m2-her", "minimax/minimax-m2.5",
+    # stepfun: keep 3.7+
+    "stepfun/step-3.5-flash",
+])
+
+"""
+True if a model should be dropped for freshness: it's a `:batch`/`:free`
+variant, it's superseded by a newer sibling, or it predates FRESH_CUTOFF and
+isn't in the keep-old allow-list. `created` is a unix timestamp (s) or `nothing`.
+"""
+function is_stale_model(model_id::AbstractString, created)
+    is_variant_model(model_id) && return true
+    model_id in SUPERSEDED_MODELS && return true
+    model_id in KEEP_OLD_MODELS && return false
+    created === nothing && return false
+    return unix2datetime(created) < FRESH_CUTOFF
+end
+
 # ---------- Helpers ----------
 
 "Convert an OpenRouter Pricing struct into a Dict with numeric fields."
@@ -395,7 +445,9 @@ function build_opencode_go_specs(provider_slug::AbstractString, catalog_specs::V
         return Any[]
     end
 
-    catalog_by_id = Dict(d["id"] => d for d in catalog_specs)
+    # Only match against catalog models that actually have a routable endpoint;
+    # endpoint-less rows are dropped later and carry no pricing to inherit.
+    catalog_by_id = Dict(d["id"] => d for d in catalog_specs if !isempty(d["endpoints"]))
     catalog_ids = collect(keys(catalog_by_id))
     specs = Any[]
     dropped = String[]
@@ -441,23 +493,7 @@ end
 # Models served via cliproxyapi (OAuth) that are NOT in the OpenRouter catalog,
 # so the export would otherwise drop them. Pricing is informational only
 # (billing goes through the proxy's OAuth account).
-# grok-composer pricing: third-party reported standard/async tier ($0.50/$2.50 per M);
-# no official xAI API pricing published yet.
-const EXTRA_MODELS = Any[
-    Dict(
-        "id" => "x-ai/grok-composer-2.5-fast",
-        "name" => "xAI: Grok Composer 2.5 Fast",
-        "created" => 1740960000,
-        "endpoints" => Any[Dict(
-            "provider_name" => "xAI",
-            "endpoint_name" => "xAI | x-ai/grok-composer-2.5-fast",
-            "context_length" => 200000,
-            "max_completion_tokens" => 32768,
-            "pricing" => Dict("prompt" => 0.0000005, "completion" => 0.0000025),
-            "tag" => "xai",
-        )],
-    ),
-]
+const EXTRA_MODELS = Any[]
 
 """
 Export all models + endpoints from OpenRouter into a JSON structure
@@ -477,6 +513,18 @@ function build_models_data()
     specs = [r[1] for r in results]
     excluded_endpoints_count = sum(r[2] for r in results)
 
+    # Merge subscription/native provider catalogs BEFORE the freshness/owner
+    # filters, so all drop rules apply once over the complete set. Merging first
+    # also means a native id (e.g. opencode's "glm-5") lands on its canonical row
+    # instead of fuzzy-matching onto a newer sibling ("glm-5.2").
+    # Ollama Cloud subscription cancelled — OpenCode Go covers these models.
+    # merge_model_specs!(specs, build_ollama_specs("ollama_cloud", specs))
+    merge_model_specs!(specs, build_opencode_go_specs("opencode_go", specs))
+
+    # Append proxy-only models (cliproxyapi OAuth) missing from the catalog.
+    existing_ids = Set(d["id"] for d in specs)
+    append!(specs, filter(d -> !(d["id"] in existing_ids), EXTRA_MODELS))
+
     # Drop models whose owner is excluded (e.g. baidu, tencent) on any host.
     owner_dropped = filter(d -> is_excluded_owner(d["id"]), specs)
     if !isempty(owner_dropped)
@@ -484,6 +532,14 @@ function build_models_data()
         foreach(d -> println("  - $(d["id"])"), owner_dropped)
     end
     filter!(d -> !is_excluded_owner(d["id"]), specs)
+
+    # Drop stale models (:batch/:free variants, pre-2026, or superseded).
+    stale_dropped = filter(d -> is_stale_model(d["id"], get(d, "created", nothing)), specs)
+    if !isempty(stale_dropped)
+        println("\nDropping $(length(stale_dropped)) stale model(s) (variant / pre-$(year(FRESH_CUTOFF)) / superseded):")
+        foreach(d -> println("  - $(d["id"])"), stale_dropped)
+    end
+    filter!(d -> !is_stale_model(d["id"], get(d, "created", nothing)), specs)
 
     # Drop models with no reachable endpoints (e.g. ~latest aliases, fully
     # excluded-provider models) — they can't be routed, so don't ship them.
@@ -495,16 +551,6 @@ function build_models_data()
     filter!(d -> !isempty(d["endpoints"]), specs)
 
     println("\nTotal excluded endpoints: $excluded_endpoints_count")
-
-    # Append subscription/native provider catalogs not represented as routable
-    # OpenRouter endpoints.
-    # Ollama Cloud subscription cancelled — OpenCode Go covers these models.
-    # merge_model_specs!(specs, build_ollama_specs("ollama_cloud", specs))
-    merge_model_specs!(specs, build_opencode_go_specs("opencode_go", specs))
-
-    # Append proxy-only models (cliproxyapi OAuth) missing from the catalog.
-    existing_ids = Set(d["id"] for d in specs)
-    append!(specs, filter(d -> !(d["id"] in existing_ids), EXTRA_MODELS))
 
     # Sort models alphabetically by id for consistent ordering
     sort!(specs, by=d -> d["id"])
