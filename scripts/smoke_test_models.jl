@@ -66,40 +66,41 @@ for m in data.models
     end
 end
 
-# providers we can actually route natively (in PROVIDER_INFO) AND hold a key for
-function keyed_slug(pn_norm)
-    for slug in OpenRouter.list_known_providers()
-        norm(slug) == pn_norm || continue
-        info = OpenRouter.get_provider_info(slug)
-        info === nothing && return nothing
-        ev = info.api_key_env_var
-        ev === nothing && return slug           # keyless (ollama/echo)
-        (haskey(ENV, ev) && !isempty(ENV[ev])) && return slug
-        return nothing                          # known but no key
-    end
-    return nothing
-end
-
-targets = Tuple{String,String,String}[]  # (slug, model_id, provider_name)
-for (pnn, (_, mid, pn)) in newest
-    slug = keyed_slug(pnn)
-    slug === nothing && continue
-    startswith(norm(slug), "echo") && continue
-    push!(targets, (slug, mid, pn))
-end
-sort!(targets, by = t -> t[1])
+# Newest model for a provider slug (matched to export provider_name), or "".
+newest_model(slug) = get(newest, norm(slug), (-1, "", ""))[2]
 
 # Per-call wall-clock cap so a provider that accepts but never answers can't stall
 # the whole run (aigen exposes no native read timeout).
 const CALL_TIMEOUT_S = parse(Float64, get(ENV, "SMOKE_TIMEOUT", "60"))
 
-println("Testing $(length(targets)) provider(s) with a key:\n")
+# Decide, for each known provider, whether we test it and with which model.
+# Returns (:test, model_id) | (:skip, reason).
+function plan(slug)
+    startswith(norm(slug), "echo") && return (:skip, "echo test server")
+    info = OpenRouter.get_provider_info(slug)
+    info === nothing && return (:skip, "no ProviderInfo")
+    ev = info.api_key_env_var
+    ev !== nothing && (!haskey(ENV, ev) || isempty(ENV[ev])) && return (:skip, "no key ($ev)")
+    mid = newest_model(slug)
+    isempty(mid) && return (:skip, "no catalog model for provider")
+    return (:test, mid)
+end
+
+all_providers = sort(OpenRouter.list_known_providers())
 results = NamedTuple[]
-for (slug, mid, pn) in targets
+
+println("Checking $(length(all_providers)) provider(s) once each:\n")
+for slug in all_providers
+    action, val = plan(slug)
+    if action == :skip
+        println(rpad(slug, 20), "⏭️  SKIP  $val")
+        push!(results, (; slug, model="", ok=false, skipped=true, dt=0.0, msg=val))
+        continue
+    end
+    mid = val
     spec = "$slug:$mid"
     print(rpad(spec, 55))
     t0 = time()
-    ok = false; msg = ""
     t = @async try
         r = aigen("Reply with exactly: OK", spec)
         (true, replace(first(String(r.content), 40), "\n" => " "))
@@ -107,19 +108,20 @@ for (slug, mid, pn) in targets
         (false, first(sprint(showerror, e), 120))
     end
     timedout = timedwait(() -> istaskdone(t), CALL_TIMEOUT_S) === :timed_out
-    if timedout
-        ok = false; msg = "TIMEOUT after $(CALL_TIMEOUT_S)s"
-    else
-        ok, msg = fetch(t)
-    end
+    ok, msg = timedout ? (false, "TIMEOUT after $(CALL_TIMEOUT_S)s") : fetch(t)
     dt = round(time() - t0, digits=1)
     println(ok ? "✅ $(dt)s  \"$msg\"" : "❌ $(dt)s  $msg")
-    push!(results, (; slug, model=mid, ok, dt, msg))
+    push!(results, (; slug, model=mid, ok, skipped=false, dt, msg))
 end
 
+tested = filter(r -> !r.skipped, results)
+skipped = filter(r -> r.skipped, results)
+okc = count(r -> r.ok, tested)
 println("\n=== summary ===")
-okc = count(r -> r.ok, results)
-println("$okc/$(length(results)) OK")
-for r in filter(r -> !r.ok, results)
+println("$okc/$(length(tested)) tested OK · $(length(skipped)) skipped")
+for r in filter(r -> !r.ok, tested)
     println("  ❌ $(r.slug):$(r.model) — $(r.msg)")
+end
+for r in skipped
+    println("  ⏭️  $(r.slug) — $(r.msg)")
 end
