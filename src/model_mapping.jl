@@ -147,8 +147,15 @@ function deepseek_model_transform(model_id::AbstractString)::AbstractString
     key = lowercase(model_id)
     mapped = get(DEEPSEEK_MODEL_MAP, key, nothing)
     mapped !== nothing && return mapped
-    # Strip deepseek/ prefix for native API (e.g. deepseek/deepseek-v4-pro -> deepseek-v4-pro)
-    startswith(key, "deepseek/") && return key[(length("deepseek/")+1):end]
+    # Strip deepseek/ prefix for native API (e.g. deepseek/deepseek-v4-pro -> deepseek-v4-pro).
+    # The native API rejects dated v4 release tags: it only accepts the base name
+    # (deepseek-v4-pro-0813 -> deepseek-v4-pro, deepseek-v4-flash-0731 -> deepseek-v4-flash).
+    # Scoped to `v4-(pro|flash)` so dated ids that ARE valid native models (e.g.
+    # deepseek-r1-0528, deepseek-chat-v3-0324) are left intact.
+    if startswith(key, "deepseek/")
+        native = key[(length("deepseek/")+1):end]
+        return replace(native, r"^(deepseek-v4-(?:pro|flash))-\d{4}$" => s"\1")
+    end
     return model_id
 end
 

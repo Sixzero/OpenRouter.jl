@@ -9,6 +9,7 @@ using Dates
 const EXCLUDED_PROVIDERS = Set([
     "amazon-bedrock",
     "azure",
+    "claude-platform-on-aws",
     "cloudflare",
     "friendli",
     "google",
@@ -57,13 +58,23 @@ const EXCLUDED_PROVIDERS = Set([
     "wandb",
 ])
 
-# (provider, model_id) combos that OpenRouter advertises but that are not actually
-# reachable on that provider's endpoint (model id mismatch, not on account, etc.).
-# Provider is matched normalized (lowercase, spaces->hyphens); model_id lowercased.
-const EXCLUDED_ENDPOINTS = Set([
-    ("cerebras", "qwen/qwen3-32b"),
-    ("together", "meta-llama/llama-4-scout"),
-])
+# Per-provider model drop list: models OpenRouter advertises on a provider but
+# that its native API doesn't actually serve (404 / "model does not exist" /
+# id mismatch, verified via scripts/smoke_test_models.jl).
+# Provider keys are matched normalized (lowercase, spaces->hyphens); model ids
+# lowercased. This only drops the endpoint on THAT provider — the model still
+# ships if another host serves it. To drop a whole provider use EXCLUDED_PROVIDERS.
+const EXCLUDED_PROVIDER_MODELS = Dict{String,Set{String}}(
+    "cerebras"    => Set(["qwen/qwen3-32b", "google/gemma-4-31b-it"]),
+    "together"    => Set(["meta-llama/llama-4-scout"]),
+    "sambanova"   => Set(["google/gemma-4-31b-it"]),
+    "chutes"      => Set(["moonshotai/kimi-k3"]),
+    "groq"        => Set(["minimax/minimax-m2.7"]),
+    "siliconflow" => Set(["deepseek/deepseek-v4-flash-0731"]),
+    # Phantom Anthropic variant: no "-fast" model on the native API (404). Only
+    # host is Anthropic, so dropping it here removes the model entirely.
+    "anthropic"   => Set(["anthropic/claude-opus-5-fast"]),
+)
 
 # Model *owners* (the slug before "/" in the model id) to drop entirely, on ANY
 # host. Excluding a provider only drops it as an endpoint host, but these models
@@ -157,14 +168,16 @@ function pick_primary_prices(endpoints::Vector{ProviderEndpoint})
 end
 
 """
-Check if an endpoint should be excluded based on its provider, or because the
-(provider, model_id) combo is listed in EXCLUDED_ENDPOINTS.
+Check if an endpoint should be excluded: the provider is fully dropped
+(EXCLUDED_PROVIDERS), or this specific model is dropped on this provider
+(EXCLUDED_PROVIDER_MODELS).
 """
 function should_exclude_endpoint(ep::ProviderEndpoint, model_id::AbstractString)
     provider_normalized = lowercase(replace(ep.provider_name, " " => "-"))
     provider_normalized in EXCLUDED_PROVIDERS && return true
     startswith(provider_normalized, "echo_") && return true
-    return (provider_normalized, lowercase(model_id)) in EXCLUDED_ENDPOINTS
+    dropped = get(EXCLUDED_PROVIDER_MODELS, provider_normalized, nothing)
+    return dropped !== nothing && lowercase(model_id) in dropped
 end
 
 """
