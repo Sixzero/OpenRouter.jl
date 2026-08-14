@@ -204,11 +204,18 @@ end
 """
     minimax_model_transform(model_id::String)::String
 
-Transform model IDs for Minimax. Currently returns unchanged.
+Transform catalog IDs into the CamelCase IDs MiniMax's native API expects:
+`minimax/minimax-m3` -> `MiniMax-M3` (the API 404s on the lowercase form).
 """
 function minimax_model_transform(model_id::AbstractString)::AbstractString
-    return model_id
+    bare = last(split(model_id, "/"))
+    startswith(lowercase(bare), "minimax-") || return bare
+    # Match the native listing exactly: MiniMax-M3, MiniMax-M2.7-highspeed.
+    return "MiniMax-" * uppercase_first(bare[length("minimax-")+1:end])
 end
+
+"Uppercase only the leading model letter (m3 -> M3), leaving the rest intact."
+uppercase_first(s::AbstractString) = isempty(s) ? s : uppercase(s[1:1]) * s[2:end]
 
 """
     xiaomi_model_transform(model_id::String)::String
