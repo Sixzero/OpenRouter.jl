@@ -50,6 +50,7 @@ const EXCLUDED_PROVIDERS = Set([
     "stepfun",
     "streamlake",
     "switchpoint",
+    "tencent",
     "upstage",
     "venice",
     "wafer",
@@ -63,6 +64,21 @@ const EXCLUDED_ENDPOINTS = Set([
     ("cerebras", "qwen/qwen3-32b"),
     ("together", "meta-llama/llama-4-scout"),
 ])
+
+# Model *owners* (the slug before "/" in the model id) to drop entirely, on ANY
+# host. Excluding a provider only drops it as an endpoint host, but these models
+# are still served by third parties (Novita, SiliconFlow, …). We don't want to
+# ship them at all.
+const EXCLUDED_MODEL_OWNERS = Set([
+    "baidu",
+    "tencent",
+])
+
+"True if the model id's owner (prefix before '/') is in EXCLUDED_MODEL_OWNERS."
+function is_excluded_owner(model_id::AbstractString)
+    owner = lowercase(first(split(model_id, "/"; limit=2)))
+    return owner in EXCLUDED_MODEL_OWNERS
+end
 
 # ---------- Helpers ----------
 
@@ -447,6 +463,14 @@ function build_models_data()
 
     specs = [r[1] for r in results]
     excluded_endpoints_count = sum(r[2] for r in results)
+
+    # Drop models whose owner is excluded (e.g. baidu, tencent) on any host.
+    owner_dropped = filter(d -> is_excluded_owner(d["id"]), specs)
+    if !isempty(owner_dropped)
+        println("\nDropping $(length(owner_dropped)) model(s) with excluded owner:")
+        foreach(d -> println("  - $(d["id"])"), owner_dropped)
+    end
+    filter!(d -> !is_excluded_owner(d["id"]), specs)
 
     # Drop models with no reachable endpoints (e.g. ~latest aliases, fully
     # excluded-provider models) — they can't be routed, so don't ship them.
