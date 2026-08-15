@@ -153,6 +153,29 @@ using Aqua
         @test !drops("anthropic/claude-sonnet-4.6")
     end
 
+    @testset "Anthropic max_tokens defaults to catalog max output" begin
+        using OpenRouter: AnthropicSchema, ChatCompletionSchema, with_default_max_tokens, create_stub_endpoint
+        ep = create_stub_endpoint("anthropic", "claude-sonnet-4.5")
+        ep.max_completion_tokens = 64000
+
+        # No user max_tokens → catalog max output.
+        kw = with_default_max_tokens(AnthropicSchema(), ep, pairs((;)))
+        @test Dict(kw)[:max_tokens] == 64000
+
+        # Explicit user max_tokens wins.
+        kw = with_default_max_tokens(AnthropicSchema(), ep, pairs((; max_tokens=10)))
+        @test Dict(kw)[:max_tokens] == 10
+
+        # Unknown catalog value → untouched (schema fallback applies).
+        ep2 = create_stub_endpoint("anthropic", "claude-x")
+        kw = with_default_max_tokens(AnthropicSchema(), ep2, pairs((;)))
+        @test !haskey(Dict(kw), :max_tokens)
+
+        # Non-Anthropic schemas untouched.
+        kw = with_default_max_tokens(ChatCompletionSchema(), ep, pairs((;)))
+        @test !haskey(Dict(kw), :max_tokens)
+    end
+
     @testset "Gemini maps max_tokens to generationConfig.maxOutputTokens" begin
         using OpenRouter: GeminiSchema, build_payload
         # Gemini API rejects OpenAI-style `max_tokens` at payload root:

@@ -146,6 +146,19 @@ function aigen(; prompt, model, kwargs...)
 end
 
 """
+Anthropic requires `max_tokens`; when the caller didn't set one, default to the
+model's catalog max output instead of the conservative schema fallback (4096).
+Other schemas are left untouched (their APIs default to the model max already).
+"""
+function with_default_max_tokens(schema::AbstractRequestSchema, endpoint::ProviderEndpoint, kwargs)
+    if schema isa AnthropicSchema && !haskey(kwargs, :max_tokens) &&
+       endpoint.max_completion_tokens !== nothing
+        return pairs((; kwargs..., max_tokens = endpoint.max_completion_tokens))
+    end
+    return kwargs
+end
+
+"""
 Core function that handles both streaming and non-streaming API calls.
 """
 function _aigen_core(prompt, provider_info::ProviderInfo, model_id::AbstractString, provider_endpoint::ProviderEndpoint; 
@@ -171,6 +184,7 @@ function _aigen_core(prompt, provider_info::ProviderInfo, model_id::AbstractStri
     
     # Build request payload using schema (pass stream as positional argument)
     stream_flag = streamcallback !== nothing
+    kwargs = with_default_max_tokens(protocolSchema, provider_endpoint, kwargs)
     payload = build_payload(protocolSchema, prompt, model_id, sys_msg, stream_flag; kwargs...)
     !isnothing(verbose) && !!verbose && @show payload
     
