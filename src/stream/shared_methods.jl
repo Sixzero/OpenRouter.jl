@@ -7,6 +7,14 @@
 # callers opt in via the `stream_idle_timeout` kwarg.
 const DEFAULT_STREAM_IDLE_TIMEOUT = 0.0
 
+# First-chunk timeout (seconds): deadline for response headers + the FIRST data
+# chunk. A dead upstream (e.g. gateway that accepts the request then never
+# responds) hangs BEFORE the per-chunk idle timeout even starts mattering, so a
+# generous idle timeout should not also delay detecting a stream that never
+# produced a single byte. Disabled by default (0); callers opt in via the
+# `stream_first_chunk_timeout` kwarg.
+const DEFAULT_STREAM_FIRST_CHUNK_TIMEOUT = 0.0
+
 """
     StreamIdleTimeoutError(timeout)
 
@@ -43,8 +51,14 @@ the caller decides what to do based on `fired[]` (see `_open_sse_stream`). That
 keeps timeout detection in one place across the `HTTP.open` boundary, where HTTP
 cleanup would otherwise mask a thrown error with an `EOFError`.
 """
-function readavailable_with_idle_timeout(stream, timeout::Real; fired::Ref{Bool}=Ref(false))
-    timeout <= 0 && return readavailable(stream)
+readavailable_with_idle_timeout(stream, timeout::Real; fired::Ref{Bool}=Ref(false)) =
+    _with_abort_timeout(() -> readavailable(stream), stream, timeout; fired)
+
+# Run `f()` under a deadline: if it doesn't return within `timeout` seconds the
+# stream's underlying connection is closed (which unblocks the blocked read
+# inside `f`) and `fired[]` is set. `timeout <= 0` disables the guard.
+function _with_abort_timeout(f::Function, stream, timeout::Real; fired::Ref{Bool}=Ref(false))
+    timeout <= 0 && return f()
     timer = Timer(timeout) do _
         fired[] = true
         try
@@ -54,7 +68,7 @@ function readavailable_with_idle_timeout(stream, timeout::Real; fired::Ref{Bool}
         end
     end
     try
-        return readavailable(stream)
+        return f()
     finally
         close(timer)
     end
@@ -328,8 +342,9 @@ Read an error response body and throw a descriptive `HTTP.RequestError`. Called 
 error with a missing or non-stream Content-Type (e.g. z.ai 429) surface the real message
 instead of a misleading content-type assertion failure.
 """
-function throw_stream_http_error(response, stream, input::AbstractString)
-    raw = read(stream)
+function throw_stream_http_error(response, stream, input::AbstractString; timeout::Real=0.0, fired::Ref{Bool}=Ref(false))
+    raw = _with_abort_timeout(() -> read(stream), stream, timeout; fired)
+    fired[] && throw(StreamIdleTimeoutError(Float64(timeout)))
     HTTP.closeread(stream)
     body = decode_response_body(raw, response.headers)
     response.status == 400 && @error "API 400: request body snippet" body_snippet=input[1:min(500,end)]
@@ -346,18 +361,35 @@ each parsed chunk to the schema hooks + `callback(cb, chunk)`. Shared by all
 """
 function _open_sse_stream(cb::AbstractLLMStream, url, headers, input::String; verbose::Bool, kwargs...)
     idle_timeout = get(kwargs, :stream_idle_timeout, get(cb.kwargs, :stream_idle_timeout, DEFAULT_STREAM_IDLE_TIMEOUT))
-    http_kwargs = Base.structdiff(NamedTuple(kwargs), (; stream_idle_timeout=nothing))
+    first_chunk_timeout = get(kwargs, :stream_first_chunk_timeout, get(cb.kwargs, :stream_first_chunk_timeout, DEFAULT_STREAM_FIRST_CHUNK_TIMEOUT))
+    http_kwargs = Base.structdiff(NamedTuple(kwargs), (; stream_idle_timeout=nothing, stream_first_chunk_timeout=nothing))
     # Closing the socket on idle makes HTTP cleanup throw an EOFError that masks
     # the StreamIdleTimeoutError; `idle_fired` lets us re-surface it.
     idle_fired = Ref(false)
+    # Two-phase timeout policy. Phase 1 (until the first data chunk): one ABSOLUTE
+    # deadline of `first_chunk_timeout` seconds covering response headers + first
+    # body bytes — each guarded call gets only the REMAINING time, so a byte-silent
+    # upstream can't stretch N per-call timeouts into N×timeout. Phase 2 (after the
+    # first chunk): per-read idle timeout that resets on every chunk. Either phase
+    # is disabled by its timeout being <= 0, independently of the other.
+    first_deadline = first_chunk_timeout > 0 ? time() + first_chunk_timeout : Inf
+    in_first_phase = Ref(first_chunk_timeout > 0)
+    # Remaining time for the current guarded call (0 disables; clamp so an
+    # already-expired deadline still aborts quickly instead of disabling).
+    eff_timeout() = in_first_phase[] ? max(time() < first_deadline ? first_deadline - time() : 0.01, 0.01) :
+                    Float64(idle_timeout)
+    reported_timeout() = in_first_phase[] ? Float64(first_chunk_timeout) : Float64(idle_timeout)
     try HTTP.open("POST", url, headers; http_kwargs...) do stream
         write(stream, input)
         HTTP.closewrite(stream)
-        response = HTTP.startread(stream)
+        response = _with_abort_timeout(() -> HTTP.startread(stream), stream, eff_timeout(); fired=idle_fired)
+        idle_fired[] && throw(StreamIdleTimeoutError(reported_timeout()))
 
         # On error status, surface the real API error first — error responses may
         # omit Content-Type (e.g. z.ai 429), so don't gate this on the header.
-        response.status >= 400 && throw_stream_http_error(response, stream, input)
+        # The body read shares the same first-phase deadline: an upstream that sends
+        # error headers then goes silent must not hang either.
+        response.status >= 400 && throw_stream_http_error(response, stream, input; timeout=eff_timeout(), fired=idle_fired)
 
         # Success path: SSE schemas must declare a single event-stream Content-Type.
         # Non-SSE schemas (e.g. Ollama NDJSON, `application/json`) skip this check.
@@ -376,11 +408,21 @@ function _open_sse_stream(cb::AbstractLLMStream, url, headers, input::String; ve
 
         isdone = false
         spillover = ""
-        while !eof(stream) && !isdone
-            masterchunk = String(readavailable_with_idle_timeout(stream, idle_timeout; fired=idle_fired))
-            # The idle abort can make the read return empty instead of throwing;
-            # treat that as a stall, not a clean end-of-stream.
-            idle_fired[] && throw(StreamIdleTimeoutError(Float64(idle_timeout)))
+        while !isdone
+            # `eof(stream)` BLOCKS until at least one byte arrives (or EOF), so the
+            # abort guard must cover it together with the read — a stream that never
+            # sends a byte parks in `eof` forever otherwise (incident 2026-08-15: a
+            # byte-silent upstream hung the flow long past the idle timeout). One
+            # guarded "eof-or-read" op = one timeout window per loop iteration.
+            raw = _with_abort_timeout(stream, eff_timeout(); fired=idle_fired) do
+                eof(stream) ? nothing : readavailable(stream)
+            end
+            # The abort can make eof/read return empty instead of throwing; treat
+            # that as a stall, not a clean end-of-stream.
+            idle_fired[] && throw(StreamIdleTimeoutError(reported_timeout()))
+            raw === nothing && break  # true EOF
+            masterchunk = String(raw)
+            isempty(masterchunk) || (in_first_phase[] = false)  # first chunk arrived → idle policy
             chunks, spillover = extract_chunks(cb.schema, masterchunk; verbose, spillover, cb.kwargs...)
             for chunk in chunks
                 verbose && @debug "Chunk Data: $(chunk.data)"
@@ -398,7 +440,7 @@ function _open_sse_stream(cb::AbstractLLMStream, url, headers, input::String; ve
         isdone || error("stream ended unexpectedly: EOF before done marker")
     end
     catch e
-        idle_fired[] && !(e isa StreamIdleTimeoutError) && throw(StreamIdleTimeoutError(Float64(idle_timeout)))
+        idle_fired[] && !(e isa StreamIdleTimeoutError) && throw(StreamIdleTimeoutError(reported_timeout()))
         rethrow()
     end
 end

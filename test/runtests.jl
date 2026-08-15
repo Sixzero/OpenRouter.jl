@@ -261,4 +261,7 @@ using Aqua
 
     # Echo server tests (all schemas)
     include("test_echo_server.jl")
+
+    # Stream first-chunk/idle timeout tests
+    include("test_stream_timeouts.jl")
 end
