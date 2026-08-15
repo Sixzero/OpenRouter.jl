@@ -153,6 +153,18 @@ using Aqua
         @test !drops("anthropic/claude-sonnet-4.6")
     end
 
+    @testset "Gemini maps max_tokens to generationConfig.maxOutputTokens" begin
+        using OpenRouter: GeminiSchema, build_payload
+        # Gemini API rejects OpenAI-style `max_tokens` at payload root:
+        # 400 Invalid JSON payload: Unknown name "max_tokens".
+        for key in (:max_tokens, :max_completion_tokens, :max_output_tokens, :maxOutputTokens)
+            p = build_payload(GeminiSchema(), "hi", "gemini-3.7-flash", nothing; (key => 123,)...)
+            @test !haskey(p, "max_tokens")
+            @test !haskey(p, "max_completion_tokens")
+            @test p["generationConfig"]["maxOutputTokens"] == 123
+        end
+    end
+
     @testset "Streaming error without Content-Type" begin
         using OpenRouter: HttpStreamCallback, HttpStreamHooks, ChatCompletionSchema, streamed_request!
         import HTTP

@@ -377,7 +377,7 @@ function build_payload(::GeminiSchema, prompt, model_id::AbstractString, sys_msg
             generation_config["topP"] = v
         elseif sk == "top_k" || sk == "topK"
             generation_config["topK"] = v
-        elseif sk == "max_output_tokens" || sk == "maxOutputTokens"
+        elseif sk in ("max_output_tokens", "maxOutputTokens", "max_tokens", "max_completion_tokens")
             generation_config["maxOutputTokens"] = v
         elseif sk == "presence_penalty" || sk == "presencePenalty"
             generation_config["presencePenalty"] = v
