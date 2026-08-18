@@ -7,3 +7,5 @@
 /docs/Manifest*.toml
 /docs/build/
 docs/build/
+
+AGENTS.md
