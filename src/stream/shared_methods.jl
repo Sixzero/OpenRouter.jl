@@ -358,6 +358,17 @@ function throw_stream_http_error(response, stream, input::AbstractString; timeou
 end
 
 """
+HTTP.jl advertises `Accept-Encoding: gzip` by default, but `HTTP.open` (used for
+streaming) does NOT decompress the body — so a provider that honors it (Anthropic
+since 2026-08) delivers gzip bytes that never parse into SSE chunks, and the stream
+dies with "EOF before done marker". Ask for identity on streaming requests.
+"""
+function _with_identity_encoding(headers)
+    any(h -> lowercase(String(first(h))) == "accept-encoding", headers) && return headers
+    return [headers; "Accept-Encoding" => "identity"]
+end
+
+"""
     _open_sse_stream(cb, url, headers, input; verbose, kwargs...) -> HTTP.Response
 
 Open a streaming POST request, validate it's an event-stream, then read chunks
@@ -366,6 +377,7 @@ each parsed chunk to the schema hooks + `callback(cb, chunk)`. Shared by all
 `streamed_request!` callback types — they differ only in their post-processing.
 """
 function _open_sse_stream(cb::AbstractLLMStream, url, headers, input::String; verbose::Bool, kwargs...)
+    headers = _with_identity_encoding(headers)
     idle_timeout = get(kwargs, :stream_idle_timeout, get(cb.kwargs, :stream_idle_timeout, DEFAULT_STREAM_IDLE_TIMEOUT))
     first_chunk_timeout = get(kwargs, :stream_first_chunk_timeout, get(cb.kwargs, :stream_first_chunk_timeout, DEFAULT_STREAM_FIRST_CHUNK_TIMEOUT))
     cancel_flag = get(kwargs, :stream_cancel_flag, get(cb.kwargs, :stream_cancel_flag, nothing))
