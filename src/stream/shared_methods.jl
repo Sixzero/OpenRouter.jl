@@ -352,8 +352,9 @@ function throw_stream_http_error(response, stream, input::AbstractString; timeou
     fired[] && throw(StreamIdleTimeoutError(Float64(timeout)))
     HTTP.closeread(stream)
     body = decode_response_body(raw, response.headers)
-    response.status == 400 && @error "API 400: request body snippet" body_snippet=input[1:min(500,end)]
-    throw(HTTP.RequestError(response, "API Error ($(response.status)): $(stream_error_message(body))"))
+    report = request_size_report(input)
+    log_request_failure(response.status, input; report)
+    throw(HTTP.RequestError(response, "API Error ($(response.status)): $(stream_error_message(body)) [request $report]"))
 end
 
 """

@@ -267,4 +267,7 @@ using Aqua
 
     # Fast cooperative cancel (stream_cancel_flag) tests
     include("test_stream_cancel.jl")
+
+    # Request payload size reporting (diagnosing max-request-size rejections)
+    include("test_request_size.jl")
 end

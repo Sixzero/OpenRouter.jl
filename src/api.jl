@@ -177,3 +177,56 @@ function list_embeddings_models(api_key::String = get(ENV, "OPENROUTER_API_KEY",
     json_str = list_embeddings_models_raw(api_key)
     return parse_embedding_models(json_str)
 end
+
+"""
+    request_size_report(body) -> String
+
+Human-readable size summary of a serialized request body: total bytes and, when the
+JSON parses, the per-part breakdown (system, tools, each message) sorted biggest-first.
+Used to diagnose "max request size" rejections — you see WHICH part blew the budget,
+not just that the whole thing was too big.
+"""
+function request_size_report(body::AbstractString; top::Int=5)::String
+    total = sizeof(body)
+    parts = String[]
+    try
+        payload = JSON3.read(body)
+        sized = Tuple{String,Int}[]
+        for k in (:system, :system_instruction, :tools, :instructions)
+            haskey(payload, k) && push!(sized, (String(k), sizeof(JSON3.write(payload[k]))))
+        end
+        msgs = haskey(payload, :messages) ? payload[:messages] :
+               haskey(payload, :contents) ? payload[:contents] :
+               haskey(payload, :input) ? payload[:input] : nothing
+        if msgs !== nothing
+            for (i, m) in enumerate(msgs)
+                role = m isa JSON3.Object && haskey(m, :role) ? String(m[:role]) : "msg"
+                push!(sized, ("$(role)[$i]", sizeof(JSON3.write(m))))
+            end
+        end
+        sort!(sized, by=last, rev=true)
+        parts = ["$(n)=$(_fmt_bytes(b))" for (n, b) in first(sized, top)]
+    catch
+        # Non-JSON or unexpected shape: total size is still the useful signal.
+    end
+    return isempty(parts) ? "total=$(_fmt_bytes(total))" :
+           "total=$(_fmt_bytes(total)), top: " * join(parts, ", ")
+end
+
+_fmt_bytes(b::Integer) = b < 1024 ? "$(b)B" :
+                         b < 1024^2 ? string(round(b / 1024, digits=1), "KB") :
+                         string(round(b / 1024^2, digits=2), "MB")
+
+"""
+    log_request_failure(status, body)
+
+Log a failed request's size breakdown plus a body snippet. Covers every 4xx/5xx (413
+"payload too large", 400 "max request size exceeded", provider-specific variants), so
+oversized-request failures are diagnosable without re-running with `verbose=true`.
+"""
+function log_request_failure(status::Integer, body::AbstractString; report::AbstractString=request_size_report(body))
+    @error "API $(status): request payload details" size=report body_snippet=_snippet(body)
+end
+
+# String-index-safe prefix (payloads contain multibyte UTF-8; `body[1:500]` can throw).
+_snippet(s::AbstractString, n::Int=500) = sizeof(s) <= n ? String(s) : String(first(s, n))

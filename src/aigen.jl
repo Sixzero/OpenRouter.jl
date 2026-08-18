@@ -199,10 +199,11 @@ function _aigen_core(prompt, provider_info::ProviderInfo, model_id::AbstractStri
     if streamcallback === nothing
         # Non-streaming request
         body = JSON3.write(payload)
+        @debug "LLM request" model=model_id size=request_size_report(body)
         response = HTTP.post(url, headers, body)
         
         if response.status != 200
-            response.status == 400 && @error "API 400: request body snippet" body_snippet=body[1:min(500,end)]
+            log_request_failure(response.status, body)
             error("API request failed with status $(response.status): $(String(response.body))")
         end
         
@@ -213,10 +214,11 @@ function _aigen_core(prompt, provider_info::ProviderInfo, model_id::AbstractStri
 
         # Streaming request
         body = JSON3.write(payload)
+        @debug "LLM request (stream)" model=model_id size=request_size_report(body)
         response = streamed_request!(streamcallback, url, headers, body)
 
         if response.status != 200
-            response.status == 400 && @error "API 400: request body snippet" body_snippet=body[1:min(500,end)]
+            log_request_failure(response.status, body)
             error("API request failed with status $(response.status): $(String(response.body))")
         end
 
