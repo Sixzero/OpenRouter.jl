@@ -28,6 +28,11 @@ end
 Base.showerror(io::IO, e::StreamIdleTimeoutError) =
     print(io, "StreamIdleTimeoutError: no data received for $(e.timeout)s (stream stalled)")
 
+# Poll interval for the cooperative cancel watcher (`stream_cancel_flag`). Bounds
+# the cancel latency for a byte-silent stream; chunk-active streams may cancel
+# even sooner via the caller's own per-chunk flag checks.
+const STREAM_CANCEL_POLL_INTERVAL = 0.1
+
 # Abort an in-flight read by closing the underlying connection/socket.
 # For an `HTTP.Stream`, `close(stream)` only marks the wrapper and does NOT
 # interrupt a blocked `readavailable`; closing `stream.stream` (the
@@ -362,7 +367,8 @@ each parsed chunk to the schema hooks + `callback(cb, chunk)`. Shared by all
 function _open_sse_stream(cb::AbstractLLMStream, url, headers, input::String; verbose::Bool, kwargs...)
     idle_timeout = get(kwargs, :stream_idle_timeout, get(cb.kwargs, :stream_idle_timeout, DEFAULT_STREAM_IDLE_TIMEOUT))
     first_chunk_timeout = get(kwargs, :stream_first_chunk_timeout, get(cb.kwargs, :stream_first_chunk_timeout, DEFAULT_STREAM_FIRST_CHUNK_TIMEOUT))
-    http_kwargs = Base.structdiff(NamedTuple(kwargs), (; stream_idle_timeout=nothing, stream_first_chunk_timeout=nothing))
+    cancel_flag = get(kwargs, :stream_cancel_flag, get(cb.kwargs, :stream_cancel_flag, nothing))
+    http_kwargs = Base.structdiff(NamedTuple(kwargs), (; stream_idle_timeout=nothing, stream_first_chunk_timeout=nothing, stream_cancel_flag=nothing))
     # Closing the socket on idle makes HTTP cleanup throw an EOFError that masks
     # the StreamIdleTimeoutError; `idle_fired` lets us re-surface it.
     idle_fired = Ref(false)
@@ -380,6 +386,25 @@ function _open_sse_stream(cb::AbstractLLMStream, url, headers, input::String; ve
                     Float64(idle_timeout)
     reported_timeout() = in_first_phase[] ? Float64(first_chunk_timeout) : Float64(idle_timeout)
     try HTTP.open("POST", url, headers; http_kwargs...) do stream
+        # Fast cooperative cancel: a watcher polls `cancel_flag` and closes the
+        # underlying socket when it fires — the SAME safe mechanism the idle
+        # timeout uses (`_abort_read!` from outside the task never touches task
+        # internals, unlike exception injection). This bounds cancel latency to
+        # ~STREAM_CANCEL_POLL_INTERVAL even for byte-silent streams, where the
+        # caller's per-chunk flag checks never run. The abort surfaces as EOF or
+        # an IO error from the blocked read; the outer catch below converts it to
+        # InterruptException (still raised on the stream-reading task — safe).
+        watcher = cancel_flag === nothing ? nothing : Timer(0.0; interval=STREAM_CANCEL_POLL_INTERVAL) do t
+            if cancel_flag[]
+                close(t)
+                try
+                    _abort_read!(stream)
+                catch e
+                    @debug "failed to abort cancelled stream read" exception=(e, catch_backtrace())
+                end
+            end
+        end
+        try
         write(stream, input)
         HTTP.closewrite(stream)
         response = _with_abort_timeout(() -> HTTP.startread(stream), stream, eff_timeout(); fired=idle_fired)
@@ -438,8 +463,15 @@ function _open_sse_stream(cb::AbstractLLMStream, url, headers, input::String; ve
         # response.completed). EOF before that marker means the connection died
         # mid-response — surface it instead of treating the partial reply as success.
         isdone || error("stream ended unexpectedly: EOF before done marker")
+        finally
+            watcher === nothing || close(watcher)
+        end
     end
     catch e
+        # Cancel outranks every stream error: the abort deliberately breaks the
+        # read/EOF/cleanup, and any of those may throw first. InterruptException
+        # is the caller's cooperative-cancel signal (see check_cancel!).
+        cancel_flag !== nothing && cancel_flag[] && throw(InterruptException())
         idle_fired[] && !(e isa StreamIdleTimeoutError) && throw(StreamIdleTimeoutError(reported_timeout()))
         rethrow()
     end

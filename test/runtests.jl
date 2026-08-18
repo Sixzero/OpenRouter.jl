@@ -264,4 +264,7 @@ using Aqua
 
     # Stream first-chunk/idle timeout tests
     include("test_stream_timeouts.jl")
+
+    # Fast cooperative cancel (stream_cancel_flag) tests
+    include("test_stream_cancel.jl")
 end
