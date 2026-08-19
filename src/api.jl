@@ -228,5 +228,16 @@ function log_request_failure(status::Integer, body::AbstractString; report::Abst
     @error "API $(status): request payload details" size=report body_snippet=_snippet(body)
 end
 
+"""
+    _is_size_error(status, response_body) -> Bool
+
+Whether the failure is plausibly caused by request size, i.e. whether the size breakdown
+is worth showing to whoever sees the error. 413 always is; 400 only when the provider says
+so. A 429 (rate limit / provider capacity) never is — the payload was fine.
+"""
+_is_size_error(status::Integer, response_body::AbstractString) =
+    status == 413 || (status == 400 &&
+        occursin(r"too large|too long|max.{0,20}size|exceed.{0,20}(size|length)|context length"i, response_body))
+
 # String-index-safe prefix (payloads contain multibyte UTF-8; `body[1:500]` can throw).
 _snippet(s::AbstractString, n::Int=500) = sizeof(s) <= n ? String(s) : String(first(s, n))

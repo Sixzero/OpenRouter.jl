@@ -346,6 +346,11 @@ Read an error response body and throw a descriptive `HTTP.RequestError`. Called 
 `status >= 400` *before* the event-stream content-type check, so providers that return an
 error with a missing or non-stream Content-Type (e.g. z.ai 429) surface the real message
 instead of a misleading content-type assertion failure.
+
+The size breakdown always goes to the log (developer-facing), but is only appended to the
+thrown message when the size actually explains the failure (`_is_size_error`) — a rate
+limit or auth error has nothing to do with payload size, and the breakdown leaks internal
+prompt structure into whatever UI renders the exception.
 """
 function throw_stream_http_error(response, stream, input::AbstractString; timeout::Real=0.0, fired::Ref{Bool}=Ref(false))
     raw = _with_abort_timeout(() -> read(stream), stream, timeout; fired)
@@ -354,7 +359,9 @@ function throw_stream_http_error(response, stream, input::AbstractString; timeou
     body = decode_response_body(raw, response.headers)
     report = request_size_report(input)
     log_request_failure(response.status, input; report)
-    throw(HTTP.RequestError(response, "API Error ($(response.status)): $(stream_error_message(body)) [request $report]"))
+    msg = "API Error ($(response.status)): $(stream_error_message(body))"
+    _is_size_error(response.status, body) && (msg *= " [request $report]")
+    throw(HTTP.RequestError(response, msg))
 end
 
 """

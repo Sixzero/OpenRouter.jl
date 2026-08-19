@@ -1,6 +1,6 @@
 using Test
 using JSON3
-using OpenRouter: request_size_report, _snippet, _fmt_bytes
+using OpenRouter: request_size_report, _snippet, _fmt_bytes, _is_size_error
 
 @testset "request size reporting" begin
     @testset "byte formatting" begin
@@ -42,5 +42,16 @@ using OpenRouter: request_size_report, _snippet, _fmt_bytes
         s = _snippet(body)
         @test length(s) == 500
         @test _snippet("short") == "short"
+    end
+
+    # The breakdown is only appended to the thrown message when size explains the failure;
+    # a 429 (rate limit / upstream pool cooldown) has nothing to do with payload size.
+    @testset "size breakdown only surfaces on size errors" begin
+        @test _is_size_error(413, "")
+        @test _is_size_error(400, "max request size exceeded")
+        @test _is_size_error(400, "prompt is too long: 300000 tokens")
+        @test !_is_size_error(429, "All credentials for model x are cooling down")
+        @test !_is_size_error(400, "invalid model id")
+        @test !_is_size_error(500, "internal error")
     end
 end
