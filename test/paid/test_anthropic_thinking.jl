@@ -31,9 +31,10 @@ setup_cli_proxy!(; mutate=true)
     end
 
     @testset "opus-4.7(xhigh) returns thinking summary" begin
-        # Requires the `interleaved-thinking-2025-05-14` beta header (set by
-        # override_providers! in OpenRouterCLIProxyAPI); without it opus models
-        # return thinking blocks with empty text.
+        # Requires the proxy to send a `thinking.display` (payload.default rule in
+        # cliproxyapi's config.yaml); without it the proxy adds
+        # `redact-thinking-2026-02-12` and opus returns thinking blocks with empty
+        # text. Client-side beta headers are dropped for cloaked requests.
         # Opus thinking is adaptive: use a compute-style prompt that reliably
         # triggers it (the primes proof is sometimes answered without thinking).
         COMPUTE_PROMPT = "How many primes between 300 and 360? Verify each candidate carefully."
