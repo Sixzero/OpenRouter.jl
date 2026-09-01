@@ -24,7 +24,7 @@ using Sockets
     end
 
     function request_stream(port; first_chunk_timeout, idle_timeout)
-        cb = OpenRouter.HttpStreamHooks(schema=OpenRouter.ChatCompletionSchema(), throw_on_error=true, out=devnull)
+        cb = OpenRouter.HttpStreamHooks(schema=OpenRouter.ChatCompletionSchema(), out=devnull)
         OpenRouter.streamed_request!(cb, "http://127.0.0.1:$port/v1/x", ["Content-Type" => "application/json"], "{}";
             stream_idle_timeout=idle_timeout, stream_first_chunk_timeout=first_chunk_timeout, retry=false)
     end

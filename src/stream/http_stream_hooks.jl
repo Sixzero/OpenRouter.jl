@@ -73,7 +73,6 @@ A stream callback that combines token counting with customizable hooks for vario
     schema::Union{AbstractRequestSchema, Nothing} = nothing
     chunks::Vector{<:StreamChunk} = StreamChunk[]
     verbose::Bool = false
-    throw_on_error::Bool = false
     kwargs::NamedTuple = NamedTuple()
     run_info::RunInfo = RunInfo()
     model::Union{String,Nothing} = nothing
@@ -93,7 +92,6 @@ A stream callback that combines token counting with customizable hooks for vario
     reasoning_formatter::Function = text -> "$(REASONING_COLOR)$text$(RESET_COLOR)"
     on_meta_usr::Function = (tokens, cost=0.0, elapsed=nothing) -> format_user_meta(tokens, cost, elapsed)
     on_meta_ai::Function = (tokens, cost=0.0, elapsed=nothing) -> format_ai_meta(tokens, cost, elapsed)
-    on_error::Function = e -> format_error_message(e)
     on_done::Function = () -> nothing
     on_start::Function = () -> nothing
     on_stop_sequence::Function = identity
@@ -107,10 +105,6 @@ end
 function format_ai_meta(tokens::TokenCounts, cost::Float64, elapsed::Union{Float64, Nothing})
     elapsed_str = elapsed !== nothing ? ", Time: $(round(elapsed, digits=2))s" : ""
     return "AI tokens: $(tokens.completion_tokens), Cost: \$$(round(cost, digits=6))$elapsed_str"
-end
-
-function format_error_message(e::Exception)
-    return "Stream error: $(string(e))"
 end
 
 function configure_stream_callback!(cb::HttpStreamHooks, schema::AbstractRequestSchema, provider_info::ProviderInfo, provider_endpoint::ProviderEndpoint)
