@@ -270,4 +270,7 @@ using Aqua
 
     # Request payload size reporting (diagnosing max-request-size rejections)
     include("test_request_size.jl")
+
+    # Model refusal (safety stop) -> ModelRefusalError instead of a parse error
+    include("test_model_refusal.jl")
 end

@@ -329,19 +329,46 @@ function parse_provider_model(provider_model::AbstractString)
 end
 
 """
+The model declined to answer (safety policy), so the response has no content at
+all. Without its own type this surfaced as `extract_content`'s "Unexpected
+response format: <raw dict>", which reads like our bug; and callers must not
+retry it — the same prompt refuses again, deterministically.
+"""
+struct ModelRefusalError <: Exception
+    model::String
+    category::Union{Nothing,String}   # e.g. "bio" (Anthropic stop_details)
+end
+Base.showerror(io::IO, e::ModelRefusalError) = print(io,
+    "`$(e.model)` refused to answer this request",
+    e.category === nothing ? "" : " (flagged as: $(e.category))",
+    ". It judged the prompt to conflict with its safety policy, so nothing was generated. ",
+    "Rephrase the request, or switch to a different model.")
+
+# Anthropic `refusal`, OpenAI `content_filter`, Gemini `SAFETY`/`PROHIBITED_CONTENT`.
+const REFUSAL_FINISH_REASONS = Set(["refusal", "content_filter", "safety", "prohibited_content"])
+
+"""
     AIMessage(schema::AbstractRequestSchema, result::Dict; endpoint=nothing, elapsed=-1.0)
 
 Construct an AIMessage by extracting all fields from raw API result.
 If `endpoint` is provided, cost is calculated from token usage.
+Throws [`ModelRefusalError`](@ref) when the model declined and returned no content.
 """
 function AIMessage(schema::AbstractRequestSchema, result::Dict;
                    endpoint::Union{Nothing,ProviderEndpoint}=nothing, elapsed::Float64=-1.0)
+    finish_reason = extract_finish_reason(schema, result)
+    # Check refusal BEFORE extract_content: on a refusal there is no content block
+    # and some schemas throw on that shape.
+    if finish_reason !== nothing && lowercase(String(finish_reason)) in REFUSAL_FINISH_REASONS
+        throw(ModelRefusalError(string(get(result, "model", "the model")),
+                                get(get(result, "stop_details", Dict()), "category", nothing)))
+    end
     content = something(extract_content(schema, result), "")
     tokens = extract_tokens(schema, result)
     cost = endpoint === nothing ? nothing : calculate_cost(endpoint, tokens)
     return AIMessage(
         content = content,
-        finish_reason = extract_finish_reason(schema, result),
+        finish_reason = finish_reason,
         tokens = tokens,
         elapsed = elapsed,
         cost = cost,
