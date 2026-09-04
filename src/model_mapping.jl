@@ -121,6 +121,17 @@ function mistral_model_transform(model_id::AbstractString)::AbstractString
 end
 
 """
+    meta_model_transform(model_id::String)::String
+
+Transform OpenRouter ids to native Meta Model API ids by stripping the `meta/`
+prefix (e.g. "meta/muse-spark-1.3" -> "muse-spark-1.3").
+"""
+function meta_model_transform(model_id::AbstractString)::AbstractString
+    startswith(lowercase(model_id), "meta/") && return model_id[(length("meta/")+1):end]
+    return model_id
+end
+
+"""
     fireworks_model_transform(model_id::String)::String
 
 Transform OpenRouter ids to native Fireworks ids, which are namespaced under

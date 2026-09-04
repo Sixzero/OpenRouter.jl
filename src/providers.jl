@@ -48,6 +48,14 @@ const PROVIDER_INFO = Dict{String,ProviderInfo}(
         mistral_model_transform,
         ChatCompletionSchema(),
         "Standard OpenAI-compatible API"),
+    "meta" => ProviderInfo(
+        "https://api.meta.ai/v1",
+        "Bearer",
+        "META_API_KEY",
+        Dict{String,String}(),
+        meta_model_transform,
+        ChatCompletionSchema(),
+        "Meta Model API (Muse Spark); OpenAI-compatible, also serves Responses API"),
     "fireworks" => ProviderInfo(
         "https://api.fireworks.ai/inference/v1",
         "Bearer",
