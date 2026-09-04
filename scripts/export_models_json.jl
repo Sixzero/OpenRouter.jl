@@ -101,13 +101,9 @@ end
 # thresholds: glm 5.2, kimi k3, grok 4.5, minimax m2.7, qwen 3.6, stepfun 3.7).
 const FRESH_CUTOFF = DateTime(2026, 1, 1)
 
-"""
-True for endpoint variants we never ship: async/free (`…:batch`, `…:free`) and
-Meta's `…-contributor` data-sharing twins (same model, different terms).
-"""
+"True for async/free endpoint variants (`…:batch`, `…:free`) we never ship."
 is_variant_model(model_id::AbstractString) =
-    endswith(model_id, ":batch") || endswith(model_id, ":free") ||
-    endswith(model_id, "-contributor")
+    endswith(model_id, ":batch") || endswith(model_id, ":free")
 
 # Pre-cutoff models we keep anyway (still good AND referenced by the frontend).
 const KEEP_OLD_MODELS = Set([
@@ -155,8 +151,11 @@ const SUPERSEDED_MODELS = Set([
     # an OpenRouter routing tier, not a real model id). Anthropic is the only
     # host, so listing them here drops them entirely.
     "anthropic/claude-opus-4.7-fast", "anthropic/claude-opus-4.8-fast", "anthropic/claude-opus-5-fast",
-    # muse: keep spark 1.3+ (native Meta Model API); glimmer is a local model
-    "meta/muse-spark-1.1", "meta/muse-spark-1.2", "meta/muse-glimmer-30b",
+    # muse: keep spark 1.3+ (native Meta Model API); glimmer is a local model.
+    # `-contributor` twins are shipped too (~15x cheaper, Meta trains on data;
+    # the frontend badges them as "trains").
+    "meta/muse-spark-1.1", "meta/muse-spark-1.2", "meta/muse-spark-1.2-contributor",
+    "meta/muse-glimmer-30b",
     # dropped: weak/off-catalog
     "ibm-granite/granite-4.1-8b", "ibm-granite/granite-4.2-8b",   # weak 8b
     "nvidia/nemotron-3.5-content-safety",  # moderation classifier, not chat
@@ -174,7 +173,7 @@ const EXOTIC_MODELS = Set([
     "meituan/longcat-2.0",
     "sakana/fugu-ultra", "sakana/sakana-namazu",
     "poolside/laguna-s-2.1", "poolside/laguna-xs-2.1",
-    "meta/muse-spark-1.3",
+    "meta/muse-spark-1.3", "meta/muse-spark-1.3-contributor",
     "inclusionai/ling-2.6-1t", "inclusionai/ling-2.6-flash",
     "inclusionai/ling-3.0-flash", "inclusionai/ring-2.6-1t",
     "nex-agi/nex-n2-pro",
