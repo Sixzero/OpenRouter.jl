@@ -134,10 +134,12 @@ const SUPERSEDED_MODELS = Set([
     "openai/gpt-5.3-codex", "openai/gpt-5.4", "openai/gpt-5.4-mini", "openai/gpt-5.4-nano",
     "openai/gpt-5.4-pro", "openai/gpt-5.4-image-2",
     "openai/gpt-audio", "openai/gpt-audio-mini", "openai/gpt-chat-latest",
-    # Phantom OpenAI variants: the native API lists gpt-5.6-luna/sol/terra but no
-    # "-pro" sibling (only 5.5 has a -pro), and each 404s with "does not exist"
-    # while the real ids merely report no credits. OpenAI is the only host.
+    # Phantom OpenAI variants: the native API lists gpt-5.6-luna/sol/terra and
+    # gpt-6-astra but no "-pro" sibling (only 5.5 has a -pro), and each 404s with
+    # "does not exist" while the real ids merely report no credits. OpenAI is the
+    # only host.
     "openai/gpt-5.6-luna-pro", "openai/gpt-5.6-sol-pro", "openai/gpt-5.6-terra-pro",
+    "openai/gpt-6-astra-pro",
     # gemini: keep only text-chat flagships — 3.7-flash + 3.1-pro-preview.
     # Drop 2.5-pro (superseded by 3.1-pro) and all image/lite/customtools/older
     # flash/pro variants.
