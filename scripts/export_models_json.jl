@@ -137,7 +137,8 @@ const SUPERSEDED_MODELS = Set([
     # Phantom OpenAI variants: the native API lists gpt-5.6-luna/sol/terra and
     # gpt-6-astra but no "-pro" sibling (only 5.5 has a -pro), and each 404s with
     # "does not exist" while the real ids merely report no credits. OpenAI is the
-    # only host.
+    # only host. NB: OpenRouter's own error is an unrelated pre-flight credit
+    # check, so the native API is the only reliable discriminator.
     "openai/gpt-5.6-luna-pro", "openai/gpt-5.6-sol-pro", "openai/gpt-5.6-terra-pro",
     "openai/gpt-6-astra-pro",
     # gemini: keep only text-chat flagships — 3.7-flash + 3.1-pro-preview.
