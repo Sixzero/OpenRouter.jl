@@ -4,6 +4,26 @@ using OpenRouter
 using JSON3
 using Dates
 
+# ---------- API keys ----------
+# Provider keys live in the agent's env file (same source smoke_test_models.jl
+# uses). Without them the native-catalog fetches fail and whole tiers silently
+# vanish from the export, so load them here rather than relying on the shell.
+const ENV_FILE = get(ENV, "EXPORT_ENV_FILE",
+    joinpath(homedir(), "repo/todoforai/agent/.env.production"))
+
+function load_env!(path)
+    isfile(path) || (@warn "env file missing" path; return)
+    for line in eachline(path)
+        s = strip(line)
+        (isempty(s) || startswith(s, "#") || !occursin("=", s)) && continue
+        k, v = split(s, "=", limit=2)
+        k = strip(k); v = strip(v)
+        (startswith(v, "\"") && endswith(v, "\"")) && (v = v[2:end-1])
+        haskey(ENV, k) || (ENV[k] = v)   # shell env wins
+    end
+end
+load_env!(ENV_FILE)
+
 # ---------- Configuration ----------
 
 const EXCLUDED_PROVIDERS = Set([
@@ -505,8 +525,16 @@ function build_opencode_go_specs(provider_slug::AbstractString, catalog_specs::V
     try
         raw = list_native_models(provider_slug)
     catch err
-        @warn "Skipping OpenCode Go models; provider unreachable" provider=provider_slug exception=err
-        return Any[]
+        # Silently returning [] here shipped a catalog with ZERO opencode_go
+        # endpoints for months (the key simply wasn't in the env). The whole
+        # subscription tier vanishing is not a warning-level event — fail, unless
+        # the caller explicitly opts out.
+        if get(ENV, "ALLOW_MISSING_OPENCODE", "") != ""
+            @warn "Skipping OpenCode Go models (ALLOW_MISSING_OPENCODE)" provider=provider_slug exception=err
+            return Any[]
+        end
+        error("OpenCode Go catalog unavailable ($provider_slug): $err\n" *
+              "Set OPENCODE_API_KEY, or ALLOW_MISSING_OPENCODE=1 to export without the subscription tier.")
     end
 
     # Only match against catalog models that actually have a routable endpoint;
