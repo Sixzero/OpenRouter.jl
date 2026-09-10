@@ -124,7 +124,10 @@ const PROVIDER_INFO = Dict{String,ProviderInfo}(
         "https://opencode.ai/zen/go/v1",
         "Bearer",
         "OPENCODE_API_KEY",
-        Dict{String,String}(),
+        # Zen Go rejects every request without a session id: 400 MissingSessionID
+        # "cannot be routed efficiently". The value is only a routing/affinity key,
+        # so a constant one is fine — but it must be present or NOTHING dispatches.
+        Dict{String,String}("x-opencode-session" => "ses_openrouterjl"),
         opencode_go_model_transform,
         ChatCompletionSchema(),
         "OpenCode Go subscription; OpenAI-compatible API with bare model IDs"),
