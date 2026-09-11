@@ -148,9 +148,12 @@ const SUPERSEDED_MODELS = Set([
     "minimax/minimax-m2-her", "minimax/minimax-m2.5",
     # stepfun: keep 3.7+
     "stepfun/step-3.5-flash",
-    # deepseek: keep the undated rolling alias (native API maps to the latest
-    # checkpoint anyway, and it has more hosts); drop frozen dated snapshots.
+    # deepseek: drop frozen dated snapshots, and v4-flash itself — since
+    # 2026-09-10 `deepseek-v4-flash` is just a legacy alias that the native API
+    # routes to V4.1-Flash (and bills at V4.1 prices), so shipping both is two
+    # rows for one model with the wrong price on one of them.
     "deepseek/deepseek-v4-flash-0731", "deepseek/deepseek-v4-pro-0813",
+    "deepseek/deepseek-v4-flash",
     # openai: keep gpt-5.5+; drop 5.3/5.4 tier and non-chat audio/latest
     "openai/gpt-5.3-codex", "openai/gpt-5.4", "openai/gpt-5.4-mini", "openai/gpt-5.4-nano",
     "openai/gpt-5.4-pro", "openai/gpt-5.4-image-2",
