@@ -138,7 +138,7 @@ const SUPERSEDED_MODELS = Set([
     # qwen: keep 3.6+ only
     "qwen/qwen3.5-122b-a10b", "qwen/qwen3.5-27b", "qwen/qwen3.5-35b-a3b",
     "qwen/qwen3.5-397b-a17b", "qwen/qwen3.5-9b", "qwen/qwen3-coder-next",
-    # glm: keep 5.2 only
+    # glm: keep 5.2+
     "z-ai/glm-4.7-flash", "z-ai/glm-5", "z-ai/glm-5-turbo", "z-ai/glm-5v-turbo", "z-ai/glm-5.1",
     # kimi: keep k3 only
     "moonshotai/kimi-k2.5", "moonshotai/kimi-k2.6", "moonshotai/kimi-k2.7-code",
@@ -151,9 +151,11 @@ const SUPERSEDED_MODELS = Set([
     # deepseek: drop frozen dated snapshots, and v4-flash itself — since
     # 2026-09-10 `deepseek-v4-flash` is just a legacy alias that the native API
     # routes to V4.1-Flash (and bills at V4.1 prices), so shipping both is two
-    # rows for one model with the wrong price on one of them.
+    # rows for one model with the wrong price on one of them. Same for
+    # -vision-exp: another legacy alias routed to V4.1-Flash, whose native
+    # multimodal support makes the separate vision row redundant.
     "deepseek/deepseek-v4-flash-0731", "deepseek/deepseek-v4-pro-0813",
-    "deepseek/deepseek-v4-flash",
+    "deepseek/deepseek-v4-flash", "deepseek/deepseek-v4-flash-vision-exp",
     # openai: keep gpt-5.5+; drop 5.3/5.4 tier and non-chat audio/latest
     "openai/gpt-5.3-codex", "openai/gpt-5.4", "openai/gpt-5.4-mini", "openai/gpt-5.4-nano",
     "openai/gpt-5.4-pro", "openai/gpt-5.4-image-2",
