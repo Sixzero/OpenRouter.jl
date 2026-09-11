@@ -152,6 +152,10 @@ const DEEPSEEK_MODEL_MAP = Dict{String,String}(
     # OpenRouter -> native DeepSeek API
     "deepseek/deepseek-v3.2" => "deepseek-chat",
     "deepseek/deepseek-v3.2-speciale" => "deepseek-reasoner",
+    # V4.1 Flash's canonical native name is the undated `deepseek-flash` (docs
+    # updated 2026-09-10); the versioned id 400s with "supported API model names
+    # are deepseek-flash, deepseek-v4-pro".
+    "deepseek/deepseek-v4.1-flash" => "deepseek-flash",
 )
 
 function deepseek_model_transform(model_id::AbstractString)::AbstractString

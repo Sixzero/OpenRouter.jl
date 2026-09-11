@@ -92,12 +92,7 @@ const EXCLUDED_PROVIDER_MODELS = Dict{String,Set{String}}(
     "chutes"      => Set(["moonshotai/kimi-k3"]),
     "groq"        => Set(["minimax/minimax-m2.7"]),
     "siliconflow" => Set(["deepseek/deepseek-v4-flash-0731"]),
-    # Phantom DeepSeek-native endpoint: OpenRouter advertises v4.1-flash on DeepSeek,
-    # but GET api.deepseek.com/v1/models lists only deepseek-flash and deepseek-v4-pro,
-    # and the call 400s with "you passed deepseek-v4.1-flash". It is also the CHEAPEST
-    # endpoint ($0.15/M), so leaving it in makes it the picker's primary and every
-    # dispatch fails. DeepInfra/Novita/SiliconFlow serve it fine.
-    "deepseek"    => Set(["deepseek/deepseek-v4.1-flash"]),
+
     # Phantom Anthropic variant: no "-fast" model on the native API (404). Only
     # host is Anthropic, so dropping it here removes the model entirely.
     "anthropic"   => Set(["anthropic/claude-opus-5-fast"]),
