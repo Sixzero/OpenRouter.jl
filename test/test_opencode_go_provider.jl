@@ -46,3 +46,16 @@ end
         @info "Skipping OpenCode Go live export test (set OPENCODE_API_KEY to enable)"
     end
 end
+
+@testset "opencode_go session header" begin
+    info = get_provider_info("opencode_go")
+    @test info.default_headers["x-opencode-session"] == "<session_id>"
+
+    # Zen Go 400s without this header, so it must always be present and non-empty.
+    withenv("TODOFORAI_TODO_ID" => "todo-123") do
+        @test ("x-opencode-session" => "todo-123") in OpenRouter.build_headers(info, "k")
+    end
+    withenv("TODOFORAI_TODO_ID" => nothing) do
+        @test ("x-opencode-session" => "openrouterjl") in OpenRouter.build_headers(info, "k")
+    end
+end

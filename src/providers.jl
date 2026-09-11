@@ -125,9 +125,10 @@ const PROVIDER_INFO = Dict{String,ProviderInfo}(
         "Bearer",
         "OPENCODE_API_KEY",
         # Zen Go rejects every request without a session id: 400 MissingSessionID
-        # "cannot be routed efficiently". The value is only a routing/affinity key,
-        # so a constant one is fine — but it must be present or NOTHING dispatches.
-        Dict{String,String}("x-opencode-session" => "ses_openrouterjl"),
+        # "cannot be routed efficiently". `<session_id>` resolves per request to the
+        # todo id (see HEADER_ENV_PLACEHOLDERS), so each conversation gets its own
+        # affinity key instead of every user sharing one constant.
+        Dict{String,String}("x-opencode-session" => "<session_id>"),
         opencode_go_model_transform,
         ChatCompletionSchema(),
         "OpenCode Go subscription; OpenAI-compatible API with bare model IDs"),
@@ -480,6 +481,28 @@ function get_provider_auth_header(info::ProviderInfo, api_key::AbstractString)::
     end
 end
 
+# Placeholders substituted into `default_headers` values at request time.
+# `<session_id>` is the caller's conversation id: the TODOforAI todo id when we
+# run inside an agent (same value llm_gateway.jl sends as X-Session-ID), so a
+# session-affine provider pins all turns of one conversation to one upstream
+# credential and its prompt cache. Outside an agent there is no conversation to
+# pin, and the fallback only has to be non-empty.
+const HEADER_ENV_PLACEHOLDERS = Dict(
+    "<session_id>" => ("TODOFORAI_TODO_ID", "openrouterjl"),
+)
+
+"""Resolve `<placeholder>`s in a header value from the environment. No-op without `<`."""
+function resolve_header_value(value::AbstractString)::String
+    '<' in value || return string(value)
+    out = string(value)
+    for (placeholder, (env_var, fallback)) in HEADER_ENV_PLACEHOLDERS
+        contains(out, placeholder) || continue
+        val = get(ENV, env_var, "")
+        out = replace(out, placeholder => isempty(val) ? fallback : val)
+    end
+    return out
+end
+
 """
 Build complete headers for a provider request.
 """
@@ -494,7 +517,7 @@ function build_headers(provider_info::ProviderInfo, api_key::AbstractString)
     
     # Add default headers for this provider
     for (k, v) in provider_info.default_headers
-        push!(headers, k => v)
+        push!(headers, k => resolve_header_value(v))
     end
     
     return headers
