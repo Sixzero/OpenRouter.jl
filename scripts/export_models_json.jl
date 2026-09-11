@@ -119,7 +119,7 @@ end
 # (every serious lab has a 2026 model), plus a short allow-list of still-good
 # older models that the frontend references. On top of the date cut, drop
 # specific 2026 models that a newer sibling has already superseded (version
-# thresholds: glm 5.2, kimi k3, grok 4.5, minimax m2.7, qwen 3.6, stepfun 3.7).
+# thresholds: glm 5.3, kimi k3, grok 4.5, minimax m2.7, qwen 3.6, stepfun 3.7).
 const FRESH_CUTOFF = DateTime(2026, 1, 1)
 
 "True for async/free endpoint variants (`…:batch`, `…:free`) we never ship."
@@ -138,8 +138,9 @@ const SUPERSEDED_MODELS = Set([
     # qwen: keep 3.6+ only
     "qwen/qwen3.5-122b-a10b", "qwen/qwen3.5-27b", "qwen/qwen3.5-35b-a3b",
     "qwen/qwen3.5-397b-a17b", "qwen/qwen3.5-9b", "qwen/qwen3-coder-next",
-    # glm: keep 5.2+
+    # glm: keep 5.3+ (and 5.3-flash)
     "z-ai/glm-4.7-flash", "z-ai/glm-5", "z-ai/glm-5-turbo", "z-ai/glm-5v-turbo", "z-ai/glm-5.1",
+    "z-ai/glm-5.2",
     # kimi: keep k3 only
     "moonshotai/kimi-k2.5", "moonshotai/kimi-k2.6", "moonshotai/kimi-k2.7-code",
     # grok: keep 4.5+
