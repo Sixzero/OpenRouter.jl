@@ -482,22 +482,34 @@ function get_provider_auth_header(info::ProviderInfo, api_key::AbstractString)::
 end
 
 # Placeholders substituted into `default_headers` values at request time.
-# `<session_id>` is the caller's conversation id: the TODOforAI todo id when we
-# run inside an agent (same value llm_gateway.jl sends as X-Session-ID), so a
-# session-affine provider pins all turns of one conversation to one upstream
-# credential and its prompt cache. Outside an agent there is no conversation to
-# pin, and the fallback only has to be non-empty.
+# `<session_id>` is the caller's conversation id, so a session-affine provider
+# (CLIProxyAPI routing.session-affinity, OpenCode Zen) pins all turns of one
+# conversation to one upstream credential and its prompt cache. Resolution order:
+#   1. `task_local_storage(:llm_session_id)` — per-task, so one process serving many
+#      conversations concurrently (the TODOforAI agent) pins each to its own todo id;
+#   2. ENV TODOFORAI_TODO_ID — single-conversation processes (edge tools, scripts);
+#   3. the fallback: `<session_id>` → a constant (OpenCode Zen rejects an empty one);
+#      `<session_id?>` → empty, and `build_headers` DROPS empty headers, so a
+#      session-affine proxy sees no session at all (and uses its own heuristics)
+#      instead of every unrelated call sharing one bogus binding.
+const SESSION_ID_KEY = :llm_session_id
 const HEADER_ENV_PLACEHOLDERS = Dict(
-    "<session_id>" => ("TODOFORAI_TODO_ID", "openrouterjl"),
+    "<session_id>"  => ("TODOFORAI_TODO_ID", "openrouterjl"),
+    "<session_id?>" => ("TODOFORAI_TODO_ID", ""),
 )
 
-"""Resolve `<placeholder>`s in a header value from the environment. No-op without `<`."""
+"Pin this task's LLM requests to one conversation (see `<session_id>`)."
+set_session_id!(id::AbstractString) = task_local_storage(SESSION_ID_KEY, String(id))
+current_session_id()::String = String(get(task_local_storage(), SESSION_ID_KEY, ""))
+
+"""Resolve `<placeholder>`s in a header value. No-op without `<`."""
 function resolve_header_value(value::AbstractString)::String
     '<' in value || return string(value)
     out = string(value)
     for (placeholder, (env_var, fallback)) in HEADER_ENV_PLACEHOLDERS
         contains(out, placeholder) || continue
-        val = get(ENV, env_var, "")
+        val = current_session_id()
+        isempty(val) && (val = get(ENV, env_var, ""))
         out = replace(out, placeholder => isempty(val) ? fallback : val)
     end
     return out
@@ -515,9 +527,10 @@ function build_headers(provider_info::ProviderInfo, api_key::AbstractString)
         push!(headers, auth_header)
     end
     
-    # Add default headers for this provider
+    # Add default headers for this provider; a placeholder resolving to "" drops the header
     for (k, v) in provider_info.default_headers
-        push!(headers, k => resolve_header_value(v))
+        val = resolve_header_value(v)
+        isempty(val) || push!(headers, k => val)
     end
     
     return headers
