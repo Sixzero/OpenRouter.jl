@@ -18,6 +18,16 @@ end
 # requests through openrouter.ai and skip native endpoint metadata matching (see parse_provider_model).
 const OPENROUTER_GATEWAY_URL = "https://openrouter.ai/api/v1"
 
+"""
+Route only to OpenRouter upstreams that don't train on inputs. Request-level, so it holds
+even if the account's "Enable providers that may train on inputs" setting is flipped back.
+"""
+function deny_data_collection!(payload::AbstractDict)
+    prov = get!(() -> Dict{String,Any}(), payload, "provider")
+    prov isa AbstractDict && (prov["data_collection"] = "deny")
+    payload
+end
+
 # Build an OpenRouter-gateway ProviderInfo. `crucible` etc. are OpenRouter-only upstreams
 # exposed as their own provider slug; the full model id (incl. `:free`) is passed through.
 openrouter_gateway(notes::String) = ProviderInfo(

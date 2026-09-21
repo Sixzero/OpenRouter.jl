@@ -186,6 +186,7 @@ function _aigen_core(prompt, provider_info::ProviderInfo, model_id::AbstractStri
     stream_flag = streamcallback !== nothing
     kwargs = with_default_max_tokens(protocolSchema, provider_endpoint, kwargs)
     payload = build_payload(protocolSchema, prompt, model_id, sys_msg, stream_flag; kwargs...)
+    provider_info.base_url == OPENROUTER_GATEWAY_URL && deny_data_collection!(payload)
     !isnothing(verbose) && !!verbose && @show payload
     
     # Build headers
