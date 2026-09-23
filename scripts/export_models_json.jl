@@ -161,6 +161,8 @@ const SUPERSEDED_MODELS = Set([
     "openai/gpt-5.3-codex", "openai/gpt-5.4", "openai/gpt-5.4-mini", "openai/gpt-5.4-nano",
     "openai/gpt-5.4-pro", "openai/gpt-5.4-image-2",
     "openai/gpt-audio", "openai/gpt-audio-mini", "openai/gpt-chat-latest",
+    # gpt-6-sol / gpt-6-luna supersede their 5.6 namesakes
+    "openai/gpt-5.6-sol", "openai/gpt-5.6-luna",
     # Phantom OpenAI variants: the native API lists gpt-5.6-luna/sol/terra and
     # gpt-6-astra but no "-pro" sibling (only 5.5 has a -pro), and each 404s with
     # "does not exist" while the real ids merely report no credits. OpenAI is the
