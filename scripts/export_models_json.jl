@@ -167,7 +167,7 @@ const SUPERSEDED_MODELS = Set([
     # only host. NB: OpenRouter's own error is an unrelated pre-flight credit
     # check, so the native API is the only reliable discriminator.
     "openai/gpt-5.6-luna-pro", "openai/gpt-5.6-sol-pro", "openai/gpt-5.6-terra-pro",
-    "openai/gpt-6-astra-pro",
+    "openai/gpt-6-astra-pro", "openai/gpt-6-sol-pro", "openai/gpt-6-luna-pro",
     # gemini: keep only text-chat flagships — 3.7-flash + 3.1-pro-preview.
     # Drop 2.5-pro (superseded by 3.1-pro) and all image/lite/customtools/older
     # flash/pro variants.
