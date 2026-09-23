@@ -20,6 +20,7 @@ const GLOBAL_CACHE = Ref{Union{ModelCache, Nothing}}(nothing)
 
 # Global aliases - mapping short forms to provider:model format
 # IMPORTANT: Keep these pointing to the LATEST best model for each provider. UPDATE when new models release!
+# Checklist: todoforai/agent/scripts/newmodel_playbook.md
 const MODEL_ALIASES = Dict{String, String}(
     "gemf" => "google-ai-studio:google/gemini-2.5-flash-preview-09-2025",
     "gemfl" => "google-ai-studio:google/gemini-2.5-flash-lite-preview-09-2025",
