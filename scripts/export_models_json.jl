@@ -105,6 +105,13 @@ const EXCLUDED_PROVIDER_MODELS = Dict{String,Set{String}}(
 const EXCLUDED_MODEL_OWNERS = Set([
     "baidu",
     "tencent",
+    # Cloaked prereleases a lab runs anonymously for evaluation: free, short-lived, and
+    # frequently listed before they dispatch — stealth/space-bunny-alpha was in
+    # /v1/models while every request answered "is not a valid model ID". They also
+    # vanish without notice, which strands anyone who had one selected. When such a
+    # model ships for real it reappears under its vendor's own owner and is picked up
+    # then.
+    "stealth",
 ])
 
 "True if the model id's owner (prefix before '/') is in EXCLUDED_MODEL_OWNERS."
