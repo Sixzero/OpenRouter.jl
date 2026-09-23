@@ -113,7 +113,7 @@ using OpenRouter
 task_short = "Give me an optimal implementation of is_prime in 3 lines max don't talk unnecessary."
 
 task_long = "Give me an optimal implementation of is_prime in 50 lines max and then think about it a lot, and rewrite it based on your thoughts"
-# resp = aigen(task_short, "gpt5")
+# resp = aigen(task_short, "gpt")
 the_printer(tokens, cost, elapsed) = begin
     elapsed_str = elapsed !== nothing ? " ($(round(elapsed, digits=2))s)" : ""
     return "\n$tokens Cost: \$$(round(cost, digits=6))$elapsed_str"
