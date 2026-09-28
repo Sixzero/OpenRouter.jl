@@ -367,6 +367,12 @@ function AIMessage(schema::AbstractRequestSchema, result::Dict;
     content = something(extract_content(schema, result), "")
     tokens = extract_tokens(schema, result)
     cost = endpoint === nothing ? nothing : calculate_cost(endpoint, tokens)
+    tool_calls = extract_tool_calls(schema, result)
+    # Text-less, tool-less HTTP 200: extract_content threw the raw body away, so nobody can
+    # tell afterwards whether the model sent an empty text block, thinking only, or nothing.
+    if isempty(strip(content)) && (tool_calls === nothing || isempty(tool_calls))
+        @warn "Model response has no text and no tool calls" model=get(result, "model", nothing) finish_reason raw=first(JSON3.write(result), 1000)
+    end
     return AIMessage(
         content = content,
         finish_reason = finish_reason,
@@ -374,7 +380,7 @@ function AIMessage(schema::AbstractRequestSchema, result::Dict;
         elapsed = elapsed,
         cost = cost,
         reasoning = extract_reasoning(schema, result),
-        tool_calls = extract_tool_calls(schema, result),
+        tool_calls = tool_calls,
         image_data = extract_images(schema, result)
     )
 end
