@@ -138,6 +138,17 @@ end
         @test haskey(out[3]["content"][end], "cache_control")
     end
 
+    @testset "Anthropic pinned cache breakpoint (extras[:cache])" begin
+        pinned = AbstractMessage[
+            UserMessage(content="ref docs", extras=Dict{Symbol,Any}(:cache => true)),
+            AIMessage(content="ok"),
+            msgs[2:end]...]
+        out = to_anthropic_messages(pinned; cache=:all)
+        @test haskey(out[1]["content"][end], "cache_control")
+        # No cache mode → no markers at all, pinned or not
+        @test !haskey(to_anthropic_messages(pinned)[1]["content"][end], "cache_control")
+    end
+
     @testset "ResponseSchema" begin
         payload = build_payload(ResponseSchema(), msgs, "gpt-5", nothing, false)
         input = payload["input"]

@@ -406,6 +406,14 @@ function to_anthropic_messages(msgs::Vector{AbstractMessage}; cache::Union{Nothi
             end
         end
 
+        # Per-message breakpoint: `extras[:cache] = true` pins a stable prefix (e.g. reference
+        # documents at the head of the history) so it stays cached even when the rolling
+        # breakpoints below move past the provider's lookback window.
+        if cache !== nothing && m isa UserMessage && m.extras !== nothing && get(m.extras, :cache, false) === true &&
+           !isempty(content) && content[end] isa Dict
+            content[end]["cache_control"] = Dict("type" => "ephemeral")
+        end
+
         push!(out, Dict("role" => role, "content" => content))
     end
 
