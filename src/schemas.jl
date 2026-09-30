@@ -482,6 +482,30 @@ function extract_reasoning(::ChatCompletionSchema, result::Dict)
 end
 
 """
+Extract generated images from a ChatCompletion response (`choices[1].message.images`,
+OpenRouter / CLIProxyAPI format: `[{type:"image_url", image_url:{url:"data:..."}}]`).
+Returns Vector{String} of data URLs or nothing if no images.
+"""
+function extract_images(::ChatCompletionSchema, result::Dict)
+    choices = get(result, "choices", nothing)
+    (choices isa AbstractVector && !isempty(choices)) || return nothing
+    msg = get(choices[1], "message", nothing)
+    msg isa AbstractDict || return nothing
+    images = String[]
+    raw = get(msg, "images", nothing)
+    raw isa AbstractVector || return nothing
+    for img in raw
+        img isa AbstractDict || continue
+        iu = get(img, "image_url", nothing)
+        url = iu isa AbstractDict ? get(iu, "url", nothing) : iu
+        # Inline data URLs only: consumers decode them as base64 (remote URLs unsupported).
+        url isa AbstractString && startswith(url, "data:") && push!(images, url)
+    end
+    return isempty(images) ? nothing : images
+end
+extract_images(::ChatCompletionAnthropicSchema, result::Dict) = extract_images(_ccs, result)
+
+"""
 Extract tool calls from API response based on schema.
 Returns nothing if no tool calls found.
 """

@@ -143,6 +143,13 @@ function build_response_body(schema::ChatCompletionSchema, cb::AbstractLLMStream
             reasoning = get(choice_delta, :reasoning_content, nothing)
             !isnothing(reasoning) && (message_dict[:reasoning_content] = get(message_dict, :reasoning_content, "") * reasoning)
 
+            # Accumulate generated images (OpenRouter / CLIProxyAPI Codex image_generation:
+            # choices[].delta.images = [{type:"image_url", image_url:{url:"data:..."}}]).
+            delta_images = get(choice_delta, :images, nothing)
+            if delta_images isa AbstractVector && !isempty(delta_images)
+                append!(get!(() -> Any[], message_dict, :images), delta_images)
+            end
+
             # Accumulate tool_calls (OpenAI streaming format: choices[].delta.tool_calls)
             delta_tool_calls = get(choice_delta, :tool_calls, nothing)
             if !isnothing(delta_tool_calls)
