@@ -25,7 +25,7 @@ const MODEL_ALIASES = Dict{String, String}(
     "gemf" => "google-ai-studio:google/gemini-2.5-flash-preview-09-2025",
     "gemfl" => "google-ai-studio:google/gemini-2.5-flash-lite-preview-09-2025",
     "claude" => "anthropic:anthropic/claude-opus-5.5",  # LATEST Anthropic model - UPDATE ON NEW RELEASE
-    "gpt" => "openai:openai/gpt-6-sol",                # LATEST OpenAI model - UPDATE ON NEW RELEASE
+    "gpt" => "openai:openai/gpt-6.1-sol",              # LATEST OpenAI model - UPDATE ON NEW RELEASE
 )
 
 """
