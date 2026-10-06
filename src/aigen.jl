@@ -235,13 +235,22 @@ function endpoint_matches_provider(endpoint, provider_lower::AbstractString)::Bo
     pnorm = _norm_slug(provider_lower)
     _norm_slug(endpoint.provider_name) == pnorm && return true
     tag = endpoint.tag
+    tag === nothing && return false
     tag == provider_lower && return true
     tag_slug = _norm_slug(split(tag, "/")[1])
     return tag_slug == pnorm
 end
 
+function find_provider_endpoint(cached_model::CachedModel, provider::AbstractString)
+    cached_model.endpoints === nothing && return nothing
+    for endpoint in cached_model.endpoints.endpoints
+        endpoint_matches_provider(endpoint, provider) && return endpoint
+    end
+    return nothing
+end
+
 # Parse "Provider:author/model_id" into (ProviderInfo, "transformed_model_id", ProviderEndpoint)
-function parse_provider_model(provider_model::AbstractString)
+function parse_provider_model(provider_model::AbstractString; endpoint_fetcher=list_endpoints)
     parts = split(provider_model, ":", limit=2)
     length(parts) == 2 || throw(ArgumentError("Modelname must be in format \"provider:author/model_id\", got \"$provider_model\""))
     
@@ -282,7 +291,7 @@ function parse_provider_model(provider_model::AbstractString)
     end
 
     # Get the cached model with endpoints
-    cached_model = get_model(lookup_model_id; fetch_endpoints=true)
+    cached_model = get_model(lookup_model_id; fetch_endpoints=true, endpoint_fetcher=endpoint_fetcher)
     if cached_model === nothing
         # For other providers, this is an error - show helpful message
         available_models = list_models(lowercase(provider_name))
@@ -302,23 +311,20 @@ function parse_provider_model(provider_model::AbstractString)
     end
 
     provider_lower = lowercase(provider_name)
-    # Find the specific endpoint for this provider
-    provider_endpoint = nothing
-    if cached_model.endpoints !== nothing
-        for endpoint in cached_model.endpoints.endpoints
-            if endpoint_matches_provider(endpoint, provider_lower)
-                provider_endpoint = endpoint
-                break
-            end
-        end
-    end
-    
+    provider_endpoint = find_provider_endpoint(cached_model, provider_lower)
     if provider_endpoint === nothing
-        throw(ArgumentError("Provider $provider_name does not host model $lookup_model_id. Available providers: $(join([ep.provider_name for ep in cached_model.endpoints.endpoints], ", "))"))
+        # A cached provider list can predate a new hosting endpoint. Refresh once
+        # before rejecting the route, without refetching the entire catalog.
+        cached_model = get_model(lookup_model_id; refresh_endpoints=true, endpoint_fetcher=endpoint_fetcher)
+        provider_endpoint = find_provider_endpoint(cached_model, provider_lower)
     end
-    
+    if provider_endpoint === nothing
+        available = join([ep.provider_name for ep in cached_model.endpoints.endpoints], ", ")
+        throw(ArgumentError("Provider $provider_name does not host model $lookup_model_id. Available providers: $available"))
+    end
+
     # Handle endpoint override (tag contains ">original>override_provider")
-    if contains(provider_endpoint.tag, ">")
+    if provider_endpoint.tag !== nothing && contains(provider_endpoint.tag, ">")
         override_provider = split(provider_endpoint.tag, ">")[end]
         provider_info = get_provider_info(override_provider)
     end

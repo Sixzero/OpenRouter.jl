@@ -288,25 +288,31 @@ end
 function get_model(
     model_id::AbstractString;
     api_key::String = get(ENV, "OPENROUTER_API_KEY", ""),
-    fetch_endpoints::Bool = false
+    fetch_endpoints::Bool = false,
+    refresh_endpoints::Bool = false,
+    endpoint_fetcher = list_endpoints
 )::Union{CachedModel, Nothing}
     cache = get_global_cache()
-
-    if isempty(cache.models)
-        cache = update_db(api_key = api_key, fetch_endpoints = fetch_endpoints)
+    if !haskey(cache.models, model_id)
+        cache = update_db(api_key=api_key, fetch_endpoints=false)
     end
 
-    if haskey(cache.models, model_id)
-        cached = cache.models[model_id]
-        if fetch_endpoints && !cached.endpoints_fetched
-            cache = update_db(api_key = api_key, full_refresh = false, fetch_endpoints = true)
-            return get(cache.models, model_id, nothing)
+    cached = get(cache.models, model_id, nothing)
+    cached === nothing && return nothing
+    if refresh_endpoints || (fetch_endpoints && (!cached.endpoints_fetched || cached.endpoints === nothing))
+        # Fetch only this model. Do not replace cached data or mark success on failure.
+        endpoints = try
+            endpoint_fetcher(String(model_id), api_key)
+        catch err
+            refresh_endpoints && rethrow()
+            @warn "Failed to fetch model endpoints; retaining cached metadata" model_id exception=(err, catch_backtrace())
+            return cached
         end
-        return cached
+        cached = CachedModel(cached.model, endpoints, now(), true)
+        cache.models[model_id] = cached
+        save_cache(cache)
     end
-
-    cache = update_db(api_key = api_key, fetch_endpoints = fetch_endpoints, full_refresh=false)
-    return get(cache.models, model_id, nothing)
+    return cached
 end
 
 function list_cached_models()::Vector{OpenRouterModel}

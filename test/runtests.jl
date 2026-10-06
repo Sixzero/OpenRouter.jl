@@ -244,6 +244,8 @@ using Aqua
         end
     end
 
+    include("test_endpoint_refresh.jl")
+
     # Include custom provider tests
     include("test_custom_providers.jl")
 

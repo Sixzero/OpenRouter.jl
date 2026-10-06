@@ -284,6 +284,7 @@ Map OpenRouter model IDs to SiliconFlow's native IDs (case and prefix
 differences). Extend this map as SiliconFlow adds or renames models.
 """
 const SILICONFLOW_MODEL_MAP = Dict{String,String}(
+    "qwen/qwen3.8-27b" => "Qwen/Qwen3.8-27B",
     "qwen/qwen3-vl-235b-a22b-instruct" => "Qwen/Qwen3-VL-235B-A22B-Instruct",
     "qwen/qwen3-vl-235b-a22b-thinking" => "Qwen/Qwen3-VL-235B-A22B-Thinking",
     "qwen/qwen3-vl-30b-a3b-thinking" => "Qwen/Qwen3-VL-30B-A3B-Thinking",
