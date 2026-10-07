@@ -62,10 +62,9 @@ function calculate_cost(pricing::Pricing, tokens::Union{Nothing,TokenCounts,Dict
     total_cost += tokens.completion_tokens * parse_price(pricing.completion)
     total_cost += tokens.input_audio_cache * parse_price(pricing.input_audio_cache)
 
-    if pricing.discount !== nothing
-        disc = parse_price(pricing.discount)
-        disc > 0.0 && (total_cost *= (1.0 - disc))
-    end
+    # `pricing.discount` is informational: OpenRouter's per-token prices are already the
+    # discounted (net) rates (e.g. DeepInfra deepseek-v4.1-flash $0.14 = $0.20 × (1−0.3),
+    # Mistral Large 4 $0.68 = $1.36 × 0.5), so applying it here would halve real cost.
 
     return total_cost > 0.0 ? total_cost : nothing
 end

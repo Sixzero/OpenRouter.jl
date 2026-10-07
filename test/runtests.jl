@@ -59,6 +59,17 @@ using Aqua
         @test isapprox(cost, 1000*0.000002 + 500*0.000004 + 200*0.000001 + 100*0.0000015; atol=1e-10)
     end
 
+    @testset "pricing.discount is informational (prices already net)" begin
+        # OpenRouter: Mistral Large 4 lists $0.68/M with discount=0.5 (list $1.36); must not halve again.
+        mk(d) = Pricing(prompt="0.00000068", completion="0.00000209", request=nothing, image=nothing,
+                        web_search=nothing, internal_reasoning=nothing, image_output=nothing, audio=nothing,
+                        input_audio_cache=nothing, input_cache_read="0.00000007", input_cache_write=nothing, discount=d)
+        tokens = Dict(:prompt_tokens => 9, :completion_tokens => 478)
+        expected = 9*0.00000068 + 478*0.00000209
+        @test isapprox(calculate_cost(mk(0.5), tokens), expected; atol=1e-12)
+        @test calculate_cost(mk(0.5), tokens) == calculate_cost(mk(nothing), tokens)
+    end
+
     @testset "calculate_cost with ProviderEndpoint" begin
         pricing = Pricing(
             prompt = "0.000002",
