@@ -126,7 +126,7 @@ Universal token counting struct. Fields are NON-OVERLAPPING for correct cost cal
 - `completion_tokens::Int`: Output tokens
 - `total_tokens::Int`: Sum of all input + output tokens
 - `input_cache_write::Int`: Tokens written to cache (Anthropic)
-- `internal_reasoning::Int`: Reasoning/thinking tokens (Gemini, DeepSeek R1)
+- `internal_reasoning::Int`: Reasoning/thinking tokens, a SUBSET of completion_tokens (informational, not billed extra)
 - `input_audio_cache::Int`: Audio tokens cached
 
 # Cost calculation

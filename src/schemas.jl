@@ -736,6 +736,11 @@ function extract_tokens(schema::AnthropicSchema, response::Union{Dict, JSON3.Obj
     # Extract cache-related tokens
     cache_write_tokens = get(usage, "cache_creation_input_tokens", 0)
     cache_read_tokens = get(usage, "cache_read_input_tokens", 0)
+
+    # Thinking tokens: `output_tokens_details.thinking_tokens`, a subset of output_tokens
+    # (already billed inside completion_tokens; informational, like reasoning_tokens on OpenAI).
+    output_details = get(usage, "output_tokens_details", nothing)
+    thinking_tokens = output_details === nothing ? 0 : get(output_details, "thinking_tokens", 0)
     
     # For Anthropic: input_tokens = tokens AFTER cache breakpoint (already non-cached)
     # Total input = input_tokens + cache_read + cache_write
@@ -746,7 +751,8 @@ function extract_tokens(schema::AnthropicSchema, response::Union{Dict, JSON3.Obj
         completion_tokens = output_tokens,
         total_tokens = total_input + output_tokens,
         input_cache_write = cache_write_tokens,
-        input_cache_read = cache_read_tokens     # cache hits
+        input_cache_read = cache_read_tokens,    # cache hits
+        internal_reasoning = thinking_tokens
     )
 end
 
@@ -758,8 +764,10 @@ function extract_tokens(::GeminiSchema, result::Union{Dict, JSON3.Object})
     completion_tokens = get(usage, "candidatesTokenCount", 0)
     total_tokens = get(usage, "totalTokenCount", prompt_tokens + completion_tokens)
     
-    # Gemini has thoughts tokens for reasoning models
+    # Gemini reports thoughts separately from candidates (total = prompt + candidates + thoughts).
+    # Fold them into completion_tokens so internal_reasoning is a subset everywhere (OpenAI/Anthropic semantics).
     internal_reasoning = get(usage, "thoughtsTokenCount", 0)
+    completion_tokens += internal_reasoning
     
     return TokenCounts(
         prompt_tokens = prompt_tokens,

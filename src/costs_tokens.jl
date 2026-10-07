@@ -57,10 +57,9 @@ function calculate_cost(pricing::Pricing, tokens::Union{Nothing,TokenCounts,Dict
     total_cost += tokens.prompt_tokens * parse_price(pricing.prompt)           # cache misses at full price
     total_cost += tokens.input_cache_read * parse_price(pricing.input_cache_read)  # cache hits at cache price
     total_cost += tokens.input_cache_write * parse_price(pricing.input_cache_write)
+    # internal_reasoning is a subset of completion_tokens (every schema normalizes to this),
+    # so it is already billed at the completion rate here; it is informational only.
     total_cost += tokens.completion_tokens * parse_price(pricing.completion)
-    # Fall back to completion price when internal_reasoning pricing is not set (e.g. xAI charges reasoning at completion rate)
-    reasoning_price = pricing.internal_reasoning !== nothing ? pricing.internal_reasoning : pricing.completion
-    total_cost += tokens.internal_reasoning * parse_price(reasoning_price)
     total_cost += tokens.input_audio_cache * parse_price(pricing.input_audio_cache)
 
     if pricing.discount !== nothing

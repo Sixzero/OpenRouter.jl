@@ -17,8 +17,8 @@ setup_cli_proxy!(; mutate=true)
 
         msg = AIMessage(raw.schema, raw.result; endpoint=raw.provider_endpoint)
         @test msg.reasoning !== nothing && !isempty(msg.reasoning)
-        # Anthropic does not expose reasoning tokens in usage -> 0 expected.
-        @test msg.tokens.internal_reasoning == 0
+        # usage.output_tokens_details.thinking_tokens -> internal_reasoning (subset of completion_tokens).
+        @test 0 < msg.tokens.internal_reasoning <= msg.tokens.completion_tokens
     end
 
     @testset "sonnet-4.5(xhigh) streaming preserves thinking block" begin
@@ -27,7 +27,7 @@ setup_cli_proxy!(; mutate=true)
                     streamcallback=cb, max_tokens=16000)
         # Streaming must reconstruct the thinking content block (regression test).
         @test msg.reasoning !== nothing
-        @test msg.tokens.internal_reasoning == 0
+        @test 0 < msg.tokens.internal_reasoning <= msg.tokens.completion_tokens
     end
 
     @testset "opus-4.7(xhigh) returns thinking summary" begin
@@ -44,7 +44,7 @@ setup_cli_proxy!(; mutate=true)
 
         msg = AIMessage(raw.schema, raw.result; endpoint=raw.provider_endpoint)
         @test msg.reasoning !== nothing && !isempty(msg.reasoning)
-        @test msg.tokens.internal_reasoning == 0
+        @test 0 < msg.tokens.internal_reasoning <= msg.tokens.completion_tokens
     end
 
     @testset "opus-4.6(xhigh) — proxy rejects level" begin
