@@ -118,9 +118,10 @@ This module provides standardized token counting and cost calculation across all
 """
     TokenCounts
 
-Universal token counting struct. Fields are NON-OVERLAPPING for correct cost calculation.
+Universal token counting struct. Input fields are NON-OVERLAPPING for correct cost calculation;
+`internal_reasoning` is informational (subset of `completion_tokens`).
 
-# Fields (non-overlapping)
+# Fields
 - `prompt_tokens::Int`: Cache misses - input tokens NOT served from cache (charged at full price)
 - `input_cache_read::Int`: Cache hits - input tokens served from cache (charged at cache price)
 - `completion_tokens::Int`: Output tokens

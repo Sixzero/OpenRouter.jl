@@ -232,7 +232,7 @@ Pricing is modeled via:
   - `prompt`, `completion`
   - `input_cache_read`, `input_cache_write`
   - `internal_reasoning`, `input_audio_cache`
-  - `discount` (global discount factor when present)
+  - `discount` (informational: OpenRouter per-token prices are already net of it)
 - `ProviderEndpoint` – combines `Pricing` with per-endpoint metadata (context length, parameters, status, etc.)
 
 Cost is computed as:

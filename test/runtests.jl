@@ -78,6 +78,14 @@ using Aqua
         @test t2.completion_tokens == 500 && t2.internal_reasoning == 400
     end
 
+    @testset "Gemini: thoughts folded, cached input split, fallback total" begin
+        g = OpenRouter.GeminiSchema()
+        t = OpenRouter.extract_tokens(g, Dict("usageMetadata" => Dict("promptTokenCount" => 100, "cachedContentTokenCount" => 60,
+                                                                       "candidatesTokenCount" => 2, "thoughtsTokenCount" => 20)))
+        @test t.prompt_tokens == 40 && t.input_cache_read == 60
+        @test t.completion_tokens == 22 && t.internal_reasoning == 20 && t.total_tokens == 122
+    end
+
     @testset "pricing.discount is informational (prices already net)" begin
         # OpenRouter: Mistral Large 4 lists $0.68/M with discount=0.5 (list $1.36); must not halve again.
         mk(d) = Pricing(prompt="0.00000068", completion="0.00000209", request=nothing, image=nothing,

@@ -795,19 +795,21 @@ function extract_tokens(::GeminiSchema, result::Union{Dict, JSON3.Object})
     usage = get(result, "usageMetadata", nothing)
     usage === nothing && return nothing
     
-    prompt_tokens = get(usage, "promptTokenCount", 0)
-    completion_tokens = get(usage, "candidatesTokenCount", 0)
-    total_tokens = get(usage, "totalTokenCount", prompt_tokens + completion_tokens)
+    api_prompt_tokens = get(usage, "promptTokenCount", 0)  # total input incl. cached
+    input_cache_read = get(usage, "cachedContentTokenCount", 0)
+    prompt_tokens = api_prompt_tokens - input_cache_read     # cache misses only
     
     # Gemini reports thoughts separately from candidates (total = prompt + candidates + thoughts).
     # Fold them into completion_tokens so internal_reasoning is a subset everywhere (OpenAI/Anthropic semantics).
     internal_reasoning = get(usage, "thoughtsTokenCount", 0)
-    completion_tokens += internal_reasoning
+    completion_tokens = get(usage, "candidatesTokenCount", 0) + internal_reasoning
+    total_tokens = get(usage, "totalTokenCount", api_prompt_tokens + completion_tokens)
     
     return TokenCounts(
         prompt_tokens = prompt_tokens,
         completion_tokens = completion_tokens,
         total_tokens = total_tokens,
+        input_cache_read = input_cache_read,
         internal_reasoning = internal_reasoning
     )
 end
