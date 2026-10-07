@@ -59,6 +59,25 @@ using Aqua
         @test isapprox(cost, 1000*0.000002 + 500*0.000004 + 200*0.000001 + 100*0.0000015; atol=1e-10)
     end
 
+    @testset "reasoning_tokens: subset (OpenAI) vs exclusive (xAI) completion" begin
+        cc = OpenRouter.ChatCompletionSchema()
+        # xAI grok-4.20-reasoning real usage: billed 0.00121435 USD (cost_in_usd_ticks 12143500)
+        xai = Dict("usage" => Dict("prompt_tokens" => 193, "completion_tokens" => 1, "total_tokens" => 636,
+                   "prompt_tokens_details" => Dict("cached_tokens" => 128),
+                   "completion_tokens_details" => Dict("reasoning_tokens" => 442)))
+        t = OpenRouter.extract_tokens(cc, xai)
+        @test t.completion_tokens == 443 && t.internal_reasoning == 442 && t.total_tokens == 636
+        p = Pricing(prompt="0.00000125", completion="0.0000025", request=nothing, image=nothing,
+                    web_search=nothing, internal_reasoning=nothing, image_output=nothing, audio=nothing,
+                    input_audio_cache=nothing, input_cache_read="0.0000002", input_cache_write=nothing, discount=nothing)
+        @test isapprox(calculate_cost(p, t), 0.00121435; atol=1e-12)
+        # OpenAI: reasoning already inside completion_tokens
+        oai = Dict("usage" => Dict("prompt_tokens" => 10, "completion_tokens" => 500, "total_tokens" => 510,
+                   "completion_tokens_details" => Dict("reasoning_tokens" => 400)))
+        t2 = OpenRouter.extract_tokens(cc, oai)
+        @test t2.completion_tokens == 500 && t2.internal_reasoning == 400
+    end
+
     @testset "pricing.discount is informational (prices already net)" begin
         # OpenRouter: Mistral Large 4 lists $0.68/M with discount=0.5 (list $1.36); must not halve again.
         mk(d) = Pricing(prompt="0.00000068", completion="0.00000209", request=nothing, image=nothing,

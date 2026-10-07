@@ -702,12 +702,17 @@ function extract_tokens(::ChatCompletionSchema, result::Union{Dict, JSON3.Object
         internal_reasoning = get(completion_details, "reasoning_tokens", 0)
     end
     
-    # total = cache_miss + cache_hit + completion (reasoning_tokens already included in completion_tokens)
+    # OpenAI: reasoning_tokens ⊂ completion_tokens. xAI chat completions: EXCLUSIVE
+    # (completion=1, reasoning=442, total=prompt+1+442; billed as both). Detect via
+    # reported total and fold in, so internal_reasoning is a subset everywhere.
     total_input = prompt_tokens + input_cache_read
+    reported_total = get(usage, "total_tokens", nothing)
+    if internal_reasoning > 0 && reported_total == total_input + completion_tokens + internal_reasoning
+        completion_tokens += internal_reasoning
+    end
     calculated_total = total_input + completion_tokens
     
     # Validate against reported total
-    reported_total = get(usage, "total_tokens", nothing)
     if reported_total !== nothing && reported_total != calculated_total
         @warn "Token count mismatch" reported_total calculated_total prompt_tokens input_cache_read completion_tokens internal_reasoning
     end
