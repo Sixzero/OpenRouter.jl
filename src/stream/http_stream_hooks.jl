@@ -215,7 +215,7 @@ function callback(cb::HttpStreamHooks, chunk::StreamChunk; kwargs...)
         cb.model = extract_model_from_chunk(cb.schema, chunk)
     end
 
-    # Handle content
+    # Handle content. Not elseif: a Mistral block-array delta can carry both.
     if (reasoning = extract_reasoning_from_chunk(cb.schema, chunk)) !== nothing
         formatted = cb.reasoning_formatter(reasoning)
         if !cb.in_reasoning_mode
@@ -223,7 +223,8 @@ function callback(cb::HttpStreamHooks, chunk::StreamChunk; kwargs...)
             cb.in_reasoning_mode = true
         end
         isa(formatted, AbstractString) && print(cb.out, formatted)
-    elseif (text = extract_content(cb.schema, chunk; kwargs...)) !== nothing
+    end
+    if (text = extract_content(cb.schema, chunk; kwargs...)) !== nothing
         formatted = cb.content_formatter(text)
         if cb.in_reasoning_mode
             isa(formatted, AbstractString) && print(cb.out, "$(RESET_COLOR)\n\n")

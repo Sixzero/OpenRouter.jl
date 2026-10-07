@@ -138,13 +138,42 @@ function build_url(schema::ChatCompletionSchema, base_url::AbstractString, model
 end
 
 """
+    split_content_blocks(content) -> (text, reasoning)
+
+Normalize a ChatCompletion `content` field. Usually a string, but Mistral reasoning
+models (e.g. mistral-large-4) send a block array, in full responses and stream deltas:
+`[{type:"thinking", thinking:[{type:"text", text:"…"}]}, {type:"text", text:"…"}]`.
+Returns `nothing` for a part that is absent.
+"""
+function split_content_blocks(content)
+    content isa AbstractVector || return (content, nothing)
+    text = nothing; reasoning = nothing
+    for block in content
+        type = get(block, "type", nothing)
+        if type == "text"
+            text = _concat(text, get(block, "text", ""))
+        elseif type == "thinking"
+            inner = get(block, "thinking", "")
+            if inner isa AbstractString
+                reasoning = _concat(reasoning, inner)
+            else
+                for b in inner; reasoning = _concat(reasoning, get(b, "text", "")); end
+            end
+        end
+    end
+    return (text, reasoning)
+end
+# Stream deltas carry a single block: hand its string through without an IOBuffer.
+_concat(acc, s) = acc === nothing ? s : acc * s
+
+"""
 Extract response content for ChatCompletionSchema.
 """
 function extract_content(::ChatCompletionSchema, result::Dict)
     if haskey(result, "choices") && length(result["choices"]) > 0
         choice = result["choices"][1]
         if haskey(choice, "message") && haskey(choice["message"], "content")
-            return choice["message"]["content"]
+            return first(split_content_blocks(choice["message"]["content"]))
         end
     end
     error("Unexpected response format from API: $result")
@@ -476,7 +505,8 @@ function extract_reasoning(::ChatCompletionSchema, result::Dict)
     # DeepSeek uses reasoning_content in OpenAI-compatible format
     if haskey(result, "choices") && length(result["choices"]) > 0
         msg = result["choices"][1]["message"]
-        return get(msg, "reasoning_content", nothing)
+        r = get(msg, "reasoning_content", nothing)
+        return r !== nothing ? r : last(split_content_blocks(get(msg, "content", nothing)))
     end
     return nothing
 end

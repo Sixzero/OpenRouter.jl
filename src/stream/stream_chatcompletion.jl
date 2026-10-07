@@ -72,7 +72,7 @@ Extract content from ChatCompletion chunk.
         choices = get(chunk.json, :choices, [])
         first_choice = get(choices, 1, Dict())
         delta = get(first_choice, :delta, Dict())
-        return get(delta, :content, nothing)
+        return first(split_content_blocks(get(delta, :content, nothing)))
     end
     return nothing
 end
@@ -87,7 +87,8 @@ Extract reasoning_content from ChatCompletion chunk (DeepSeek style).
         choices = get(chunk.json, :choices, [])
         first_choice = get(choices, 1, Dict())
         delta = get(first_choice, :delta, Dict())
-        return get(delta, :reasoning_content, nothing)
+        r = get(delta, :reasoning_content, nothing)
+        return r !== nothing ? r : last(split_content_blocks(get(delta, :content, nothing)))
     end
     return nothing
 end
@@ -136,11 +137,12 @@ function build_response_body(schema::ChatCompletionSchema, cb::AbstractLLMStream
             role = get(choice_delta, :role, nothing)
             !isnothing(role) && (message_dict[:role] = role)
             
-            content = get(choice_delta, :content, nothing)
+            # Mistral reasoning models stream content as thinking/text block arrays.
+            content, block_reasoning = split_content_blocks(get(choice_delta, :content, nothing))
             !isnothing(content) && (message_dict[:content] *= content)
-            
-            # Accumulate reasoning_content (DeepSeek style)
-            reasoning = get(choice_delta, :reasoning_content, nothing)
+
+            # Accumulate reasoning_content (DeepSeek style) or Mistral thinking blocks
+            reasoning = something(get(choice_delta, :reasoning_content, nothing), block_reasoning, Some(nothing))
             !isnothing(reasoning) && (message_dict[:reasoning_content] = get(message_dict, :reasoning_content, "") * reasoning)
 
             # Accumulate generated images (OpenRouter / CLIProxyAPI Codex image_generation:
