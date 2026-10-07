@@ -216,6 +216,8 @@ function callback(cb::HttpStreamHooks, chunk::StreamChunk; kwargs...)
     end
 
     # Handle content. Not elseif: a Mistral block-array delta can carry both.
+    # include_thinking=false: reasoning was just routed above; Anthropic's extract_content
+    # would otherwise return the same thinking_delta again as text (duplicated in chat).
     if (reasoning = extract_reasoning_from_chunk(cb.schema, chunk)) !== nothing
         formatted = cb.reasoning_formatter(reasoning)
         if !cb.in_reasoning_mode
@@ -224,7 +226,7 @@ function callback(cb::HttpStreamHooks, chunk::StreamChunk; kwargs...)
         end
         isa(formatted, AbstractString) && print(cb.out, formatted)
     end
-    if (text = extract_content(cb.schema, chunk; kwargs...)) !== nothing
+    if (text = extract_content(cb.schema, chunk; kwargs..., include_thinking=false)) !== nothing
         formatted = cb.content_formatter(text)
         if cb.in_reasoning_mode
             isa(formatted, AbstractString) && print(cb.out, "$(RESET_COLOR)\n\n")
