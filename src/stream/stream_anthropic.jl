@@ -54,8 +54,20 @@ function extract_content(schema::AnthropicSchema, chunk::AbstractStreamChunk;
 end
 
 function acc_tokens(schema::AnthropicSchema, accumulator::TokenCounts, new_tokens::TokenCounts)
-    # Anthropic sends cumulative counts, so replace rather than add
-    return new_tokens
+    # Cumulative counts, but message_delta usage carries only output_tokens (input/cache
+    # fields are only in message_start) — keep input-side fields from the accumulator.
+    prompt   = max(accumulator.prompt_tokens, new_tokens.prompt_tokens)
+    c_read   = max(accumulator.input_cache_read, new_tokens.input_cache_read)
+    c_write  = max(accumulator.input_cache_write, new_tokens.input_cache_write)
+    return TokenCounts(
+        prompt_tokens = prompt,
+        completion_tokens = new_tokens.completion_tokens,
+        total_tokens = prompt + c_read + c_write + new_tokens.completion_tokens,
+        input_cache_read = c_read,
+        input_cache_write = c_write,
+        internal_reasoning = max(accumulator.internal_reasoning, new_tokens.internal_reasoning),
+        input_audio_cache = max(accumulator.input_audio_cache, new_tokens.input_audio_cache),
+    )
 end
 
 # Anthropic sends usage early with low completion_tokens (<=3)

@@ -86,6 +86,16 @@ using Aqua
         @test t.completion_tokens == 22 && t.internal_reasoning == 20 && t.total_tokens == 122
     end
 
+    @testset "Anthropic stream acc_tokens keeps input/cache from message_start" begin
+        s = OpenRouter.AnthropicSchema()
+        start = OpenRouter.extract_tokens(s, Dict("type"=>"message_start", "message"=>Dict("usage"=>Dict(
+            "input_tokens"=>44, "output_tokens"=>1, "cache_read_input_tokens"=>200, "cache_creation_input_tokens"=>50))))
+        delta = OpenRouter.extract_tokens(s, Dict("type"=>"message_delta", "usage"=>Dict("output_tokens"=>24)))
+        acc = OpenRouter.acc_tokens(s, start, delta)
+        @test acc.prompt_tokens == 44 && acc.input_cache_read == 200 && acc.input_cache_write == 50
+        @test acc.completion_tokens == 24 && acc.total_tokens == 44 + 200 + 50 + 24
+    end
+
     @testset "pricing.discount is informational (prices already net)" begin
         # OpenRouter: Mistral Large 4 lists $0.68/M with discount=0.5 (list $1.36); must not halve again.
         mk(d) = Pricing(prompt="0.00000068", completion="0.00000209", request=nothing, image=nothing,
