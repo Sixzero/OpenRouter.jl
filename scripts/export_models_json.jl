@@ -189,6 +189,7 @@ const SUPERSEDED_MODELS = Set([
     "google/gemini-3.1-flash-lite", "google/gemini-3.1-flash-lite-preview",
     "google/gemini-3.1-flash-lite-image", "google/gemini-3-pro-image",
     "google/gemini-3.5-flash", "google/gemini-3.5-flash-lite", "google/gemini-3.6-flash",
+    "google/gemini-nano-banana-2.1",  # image-gen
     # anthropic: all opus "-fast" are phantom (404 on the native API — "fast" is
     # an OpenRouter routing tier, not a real model id). Anthropic is the only
     # host, so listing them here drops them entirely.
@@ -196,6 +197,7 @@ const SUPERSEDED_MODELS = Set([
     # muse: keep spark 1.3+ (native Meta Model API); glimmer is a local model.
     # `-contributor` twins are shipped too (~15x cheaper, Meta trains on data;
     # the frontend badges them as "trains").
+    "inclusionai/ling-3.0-flash",  # superseded by ling-3.1-flash
     "meta/muse-spark-1.1", "meta/muse-spark-1.2", "meta/muse-spark-1.2-contributor",
     "meta/muse-glimmer-30b",
     # dropped: weak/off-catalog
@@ -217,7 +219,9 @@ const EXOTIC_MODELS = Set([
     "poolside/laguna-s-2.1", "poolside/laguna-xs-2.1",
     "meta/muse-spark-1.3", "meta/muse-spark-1.3-contributor",
     "inclusionai/ling-2.6-1t", "inclusionai/ling-2.6-flash",
-    "inclusionai/ling-3.0-flash", "inclusionai/ring-2.6-1t",
+    "inclusionai/ling-3.1-flash", "inclusionai/ring-2.6-1t",
+    # Unbiased Pareto: unknown lab's "composite" (ensemble) model, single host.
+    "unbiased/pareto", "unbiased/pareto-26.10-preview",
     "nex-agi/nex-n2-pro",
     "nvidia/nemotron-3-super-120b-a12b", "nvidia/nemotron-3-ultra-550b-a55b",
     "nvidia/nemotron-3.5-lightning",
