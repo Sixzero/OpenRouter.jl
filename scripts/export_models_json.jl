@@ -530,7 +530,8 @@ end
 
 # ---------- OpenCode Go subscription catalog ----------
 
-const OPENCODE_GO_EXCLUDED_MODELS = Set(["gpt-5.6-luna", "grok-4.5", "grok-4.6"])
+# Haiku always goes direct (anthropic / cliproxy), never through OpenCode Go.
+const OPENCODE_GO_EXCLUDED_MODELS = Set(["gpt-5.6-luna", "grok-4.5", "grok-4.6", "claude-haiku-5-5"])
 
 """
 Build namespaced model specs for OpenCode Go. Pricing and context are inherited
