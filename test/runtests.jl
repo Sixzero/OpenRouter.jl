@@ -330,5 +330,6 @@ using Aqua
 
     # Mistral reasoning models: content as thinking/text block arrays
     include("test_mistral_content_blocks.jl")
+    include("test_meta_model_transform.jl")
     include("test_anthropic_hooks_thinking.jl")
 end
