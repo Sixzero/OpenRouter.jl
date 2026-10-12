@@ -323,6 +323,7 @@ using Aqua
 
     # Model refusal (safety stop) -> ModelRefusalError instead of a parse error
     include("test_model_refusal.jl")
+    include("test_anthropic_content.jl")
 
     # ChatCompletion delta.images (CLIProxyAPI Codex image_generation) -> AIMessage.image_data
     include("test_chatcompletion_images.jl")

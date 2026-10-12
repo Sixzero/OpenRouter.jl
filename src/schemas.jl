@@ -320,14 +320,14 @@ end
 Extract response content for AnthropicSchema.
 """
 function extract_content(::AnthropicSchema, result::Dict)
-    if haskey(result, "content") && length(result["content"]) > 0
-        # Find first text block (may be absent when response is tool_use only)
+    if haskey(result, "content") && result["content"] isa AbstractVector
+        # Find first text block (may be absent in empty or tool-only responses)
         for block in result["content"]
             if get(block, "type", nothing) == "text" && haskey(block, "text")
                 return block["text"]
             end
         end
-        return ""  # tool_use only response
+        return ""
     end
     error("Unexpected response format from Anthropic API: $result")
 end
