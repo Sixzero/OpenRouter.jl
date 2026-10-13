@@ -78,7 +78,7 @@ function swap_echo_port!(from, to)
         old = PROVIDER_INFO[name]
         PROVIDER_INFO[name] = ProviderInfo(replace(old.base_url, string(from) => string(to)),
             old.auth_header_format, old.api_key_env_var, old.default_headers,
-            old.model_name_transform, old.schema, old.notes)
+            old.model_name_transform, old.schema, old.notes, old.thinking_suffix)
     end
 end
 

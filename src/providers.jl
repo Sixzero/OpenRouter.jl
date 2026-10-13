@@ -12,7 +12,13 @@ mutable struct ProviderInfo
     model_name_transform::Union{Function,Nothing}  # Transform model names for this provider
     schema::AbstractRequestSchema     # Request schema for this provider
     notes::String
+    # How a `model(level)` thinking suffix reaches the provider:
+    #   :passthrough      - kept on the model id (CLIProxyAPI parses it itself)
+    #   :reasoning_effort - stripped, sent as `reasoning_effort = level` (native OpenAI-compatible APIs)
+    thinking_suffix::Symbol
 end
+ProviderInfo(base_url, auth, env, headers, transform, schema, notes) =
+    ProviderInfo(base_url, auth, env, headers, transform, schema, notes, :passthrough)
 
 # OpenRouter gateway base URL. Providers pointing here (openrouter, crucible, ...) route
 # requests through openrouter.ai and skip native endpoint metadata matching (see parse_provider_model).
@@ -65,7 +71,8 @@ const PROVIDER_INFO = Dict{String,ProviderInfo}(
         Dict{String,String}(),
         meta_model_transform,
         ChatCompletionSchema(),
-        "Meta Model API (Muse Spark); OpenAI-compatible, also serves Responses API"),
+        "Meta Model API (Muse Spark); OpenAI-compatible, also serves Responses API",
+        :reasoning_effort),
     "fireworks" => ProviderInfo(
         "https://api.fireworks.ai/inference/v1",
         "Bearer",

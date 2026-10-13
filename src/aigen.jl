@@ -158,6 +158,21 @@ function with_default_max_tokens(schema::AbstractRequestSchema, endpoint::Provid
     return kwargs
 end
 
+const THINKING_LEVEL_SUFFIX = r"^(.*?)\((none|minimal|low|medium|high|xhigh)\)$"
+
+"""
+Providers with `thinking_suffix == :reasoning_effort` get `model(level)` split into a bare
+model id plus `reasoning_effort = level` (explicit kwarg wins). Everything else keeps the
+suffix on the id. Numeric budgets like `(16384)` are always passed through.
+"""
+function with_thinking_suffix(provider_info::ProviderInfo, model_id::AbstractString, kwargs)
+    provider_info.thinking_suffix == :reasoning_effort || return model_id, kwargs
+    m = match(THINKING_LEVEL_SUFFIX, model_id)
+    m === nothing && return model_id, kwargs
+    haskey(kwargs, :reasoning_effort) && return m[1], kwargs
+    return m[1], pairs((; kwargs..., reasoning_effort = m[2]))
+end
+
 """
 Core function that handles both streaming and non-streaming API calls.
 """
@@ -185,6 +200,7 @@ function _aigen_core(prompt, provider_info::ProviderInfo, model_id::AbstractStri
     # Build request payload using schema (pass stream as positional argument)
     stream_flag = streamcallback !== nothing
     kwargs = with_default_max_tokens(protocolSchema, provider_endpoint, kwargs)
+    model_id, kwargs = with_thinking_suffix(provider_info, model_id, kwargs)
     payload = build_payload(protocolSchema, prompt, model_id, sys_msg, stream_flag; kwargs...)
     provider_info.base_url == OPENROUTER_GATEWAY_URL && deny_data_collection!(payload)
     !isnothing(verbose) && !!verbose && @show payload

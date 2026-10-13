@@ -303,6 +303,9 @@ using Aqua
     # Ollama native API tests (live cloud tests gated on OLLAMA_API_KEY)
     include("test_ollama_provider.jl")
 
+    # model(level) suffix -> reasoning_effort for native OpenAI-compatible providers (meta)
+    include("test_thinking_suffix.jl")
+
     # Ollama -> OpenRouter catalog price matching (export script)
     include("test_ollama_pricing_match.jl")
 
