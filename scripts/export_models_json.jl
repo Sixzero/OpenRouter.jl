@@ -531,7 +531,11 @@ end
 # ---------- OpenCode Go subscription catalog ----------
 
 # Haiku always goes direct (anthropic / cliproxy), never through OpenCode Go.
-const OPENCODE_GO_EXCLUDED_MODELS = Set(["gpt-5.6-luna", "grok-4.5", "grok-4.6", "claude-haiku-5-5"])
+# gemini-4-argon-contributor is Go's only Argon and it trains on request data
+# (refused unless the workspace opts into training endpoints) — ship Argon only
+# via `vertex:` (metered Gemini API).
+const OPENCODE_GO_EXCLUDED_MODELS = Set(["gpt-5.6-luna", "grok-4.5", "grok-4.6", "claude-haiku-5-5",
+    "gemini-4-argon-contributor"])
 
 """
 Build namespaced model specs for OpenCode Go. Pricing and context are inherited

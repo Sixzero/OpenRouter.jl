@@ -34,6 +34,14 @@ using Aqua
         @test endpoint isa OpenRouter.ProviderEndpoint
     end
 
+    @testset "vertex: slug = Gemini API, GeminiSchema" begin
+        provider_info, model_id, _ = OpenRouter.parse_provider_model("vertex:google/gemini-4-argon")
+        @test provider_info.base_url == "https://generativelanguage.googleapis.com/v1beta"
+        @test provider_info.api_key_env_var == "GOOGLE_API_KEY"
+        @test provider_info.schema isa OpenRouter.GeminiSchema
+        @test model_id == "gemini-4-argon"
+    end
+
     @testset "cost calculation with cache" begin
         pricing = Pricing(
             prompt = "0.000002",

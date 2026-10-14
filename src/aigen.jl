@@ -326,7 +326,9 @@ function parse_provider_model(provider_model::AbstractString; endpoint_fetcher=l
                create_stub_endpoint(provider_name, lookup_model_id; pricing=twin.pricing)
     end
 
-    provider_lower = lowercase(provider_name)
+    # `vertex:` is the same Gemini API as `google-ai-studio:`, so bill with that
+    # endpoint's pricing (the catalog has no "vertex" endpoint).
+    provider_lower = lc_name == "vertex" ? "google-ai-studio" : lowercase(provider_name)
     provider_endpoint = find_provider_endpoint(cached_model, provider_lower)
     if provider_endpoint === nothing
         # A cached provider list can predate a new hosting endpoint. Refresh once

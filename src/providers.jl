@@ -191,6 +191,19 @@ const PROVIDER_INFO = Dict{String,ProviderInfo}(
         google_model_transform,
         GeminiSchema(),
         "Uses Google's Gemini API format, not OpenAI-compatible"),
+    # Same Gemini API and key as `google-ai-studio`, under a slug the CLIProxyAPI
+    # override never rebinds: for models only Google serves on metered billing
+    # (gemini-4-argon) while `google-ai-studio` is pointed at the proxy. The real
+    # Vertex endpoint (aiplatform.googleapis.com) refuses API keys, so this does
+    # not reach it; the Gemini API bills the same project and lists the same models.
+    "vertex" => ProviderInfo(
+        "https://generativelanguage.googleapis.com/v1beta",
+        "x-goog-api-key",
+        "GOOGLE_API_KEY",
+        Dict{String,String}(),
+        google_model_transform,
+        GeminiSchema(),
+        "Google Gemini API (metered), not rebound to CLIProxyAPI"),
 
     # Other OpenAI-compatible hosts
     "deepinfra" => ProviderInfo(

@@ -22,7 +22,7 @@ include(joinpath(@__DIR__, "..", "scripts", "export_models_json.jl"))
 end
 
 @testset "OpenCode Go export" begin
-    @test OPENCODE_GO_EXCLUDED_MODELS == Set(["gpt-5.6-luna", "grok-4.5", "grok-4.6"])
+    @test OPENCODE_GO_EXCLUDED_MODELS == Set(["gpt-5.6-luna", "grok-4.5", "grok-4.6", "claude-haiku-5-5", "gemini-4-argon-contributor"])
 
     catalog = Any[
         Dict("id" => "moonshotai/kimi-k3", "name" => "MoonshotAI: Kimi K3", "endpoints" => Any[Dict(
