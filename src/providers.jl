@@ -138,7 +138,9 @@ const PROVIDER_INFO = Dict{String,ProviderInfo}(
         ChatCompletionSchema(),
         "Standard OpenAI-compatible API"),
     "opencode_go" => ProviderInfo(
-        "https://opencode.ai/zen/go/v1",
+        # `inference/go/v1` serves every Go protocol (chat/completions AND Gemini-native
+        # `/models/{id}:generateContent`); the older `zen/go/v1` host only chat.
+        "https://opencode.ai/inference/go/v1",
         "Bearer",
         "OPENCODE_API_KEY",
         # Zen Go rejects every request without a session id: 400 MissingSessionID
@@ -611,6 +613,10 @@ end
 Get the appropriate schema for a provider info and model.
 """
 function get_provider_schema(provider_info::ProviderInfo, model_id::AbstractString)::AbstractRequestSchema
+    # OpenCode Go exposes Gemini models only on the Gemini-native protocol
+    # (chat/completions answers ModelProtocolUnsupported); the rest stay OpenAI-style.
+    provider_info === get(PROVIDER_INFO, "opencode_go", nothing) && startswith(model_id, "gemini-") &&
+        return GeminiSchema()
     return provider_info.schema
 end
 

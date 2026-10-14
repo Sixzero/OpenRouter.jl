@@ -531,11 +531,7 @@ end
 # ---------- OpenCode Go subscription catalog ----------
 
 # Haiku always goes direct (anthropic / cliproxy), never through OpenCode Go.
-# gemini-4-argon-contributor is Go's only Argon and it trains on request data
-# (refused unless the workspace opts into training endpoints) — ship Argon only
-# via `vertex:` (metered Gemini API).
-const OPENCODE_GO_EXCLUDED_MODELS = Set(["gpt-5.6-luna", "grok-4.5", "grok-4.6", "claude-haiku-5-5",
-    "gemini-4-argon-contributor"])
+const OPENCODE_GO_EXCLUDED_MODELS = Set(["gpt-5.6-luna", "grok-4.5", "grok-4.6", "claude-haiku-5-5"])
 
 """
 Build namespaced model specs for OpenCode Go. Pricing and context are inherited
@@ -584,6 +580,10 @@ function build_opencode_go_specs(provider_slug::AbstractString, catalog_specs::V
             "pricing" => twin_ep["pricing"],
             "tag" => "$provider_slug/$model_id",
         )
+        # Go's `-contributor` variants are cheaper because the lab trains on the
+        # traffic. The row is keyed by the canonical id (no `-contributor`), so flag
+        # the endpoint itself for the frontend's data-policy badge.
+        endswith(model_id, "-contributor") && (endpoint["trains_on_data"] = true)
         # Use the matched canonical OpenRouter id so this provider is merged into
         # the existing model row instead of creating a duplicate model.
         push!(specs, Dict(

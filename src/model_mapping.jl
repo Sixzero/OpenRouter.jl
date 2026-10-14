@@ -214,9 +214,18 @@ function moonshotai_model_transform(model_id::AbstractString)::AbstractString
     return startswith(model_id, "moonshotai/") ? model_id[length("moonshotai/")+1:end] : model_id
 end
 
+# Go ids that differ from the canonical catalog id beyond the dropped author
+# prefix. Go only sells Argon as the `-contributor` variant (trains on traffic);
+# the catalog row stays `google/gemini-4-argon` so pricing/context merge, and the
+# export flags the endpoint `trains_on_data` for the picker badge.
+const OPENCODE_GO_NATIVE_IDS = Dict{String,String}(
+    "gemini-4-argon" => "gemini-4-argon-contributor",
+)
+
 """OpenCode Go expects bare IDs, while the shared catalog uses author/model IDs."""
 function opencode_go_model_transform(model_id::AbstractString)::AbstractString
-    return last(split(model_id, "/"))
+    bare = String(last(split(model_id, "/")))
+    return get(OPENCODE_GO_NATIVE_IDS, bare, bare)
 end
 
 """

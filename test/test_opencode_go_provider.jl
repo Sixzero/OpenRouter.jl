@@ -7,7 +7,7 @@ include(joinpath(@__DIR__, "..", "scripts", "export_models_json.jl"))
 @testset "OpenCode Go provider" begin
     info = get_provider_info("opencode_go")
     @test info !== nothing
-    @test info.base_url == "https://opencode.ai/zen/go/v1"
+    @test info.base_url == "https://opencode.ai/inference/go/v1"
     @test info.api_key_env_var == "OPENCODE_API_KEY"
     @test info.schema isa ChatCompletionSchema
 
@@ -17,12 +17,17 @@ include(joinpath(@__DIR__, "..", "scripts", "export_models_json.jl"))
     @test endpoint.provider_name == "opencode_go"
     @test endpoint.pricing !== nothing
 
+    # Gemini ids ride the Gemini-native protocol; everything else stays chat/completions.
+    @test OpenRouter.get_provider_schema(info, "gemini-4-argon-contributor") isa GeminiSchema
+    @test OpenRouter.opencode_go_model_transform("google/gemini-4-argon") == "gemini-4-argon-contributor"
+    @test OpenRouter.get_provider_schema(info, "kimi-k3") isa ChatCompletionSchema
+
     payload = OpenRouter.build_payload(ChatCompletionSchema(), "hi", "kimi-k3", nothing; top_p=0.9)
     @test payload["top_p"] == 0.95
 end
 
 @testset "OpenCode Go export" begin
-    @test OPENCODE_GO_EXCLUDED_MODELS == Set(["gpt-5.6-luna", "grok-4.5", "grok-4.6", "claude-haiku-5-5", "gemini-4-argon-contributor"])
+    @test OPENCODE_GO_EXCLUDED_MODELS == Set(["gpt-5.6-luna", "grok-4.5", "grok-4.6", "claude-haiku-5-5"])
 
     catalog = Any[
         Dict("id" => "moonshotai/kimi-k3", "name" => "MoonshotAI: Kimi K3", "endpoints" => Any[Dict(

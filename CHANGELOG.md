@@ -2,8 +2,8 @@
 
 ## Unreleased
 
+- opencode_go: base URL → `https://opencode.ai/inference/go/v1`; Gemini ids use the Gemini-native protocol (`gemini-4-argon` → Go's `gemini-4-argon-contributor`); export flags Go `-contributor` endpoints `trains_on_data`
 - Add `vertex:` provider: the Gemini API (`GOOGLE_API_KEY`) under a slug CLIProxyAPI never rebinds, billed with the `google-ai-studio` catalog endpoint — for Google-only metered models such as `gemini-4-argon`
-- export: exclude `gemini-4-argon-contributor` from OpenCode Go (trains on request data)
 - Fix Novita GLM models 404: map OpenRouter `z-ai/` ids to Novita's `zai-org/` namespace
 
 ## v1.3.0
