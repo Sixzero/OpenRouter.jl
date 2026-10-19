@@ -320,15 +320,20 @@ const PROVIDER_INFO = Dict{String,ProviderInfo}(
         ChatCompletionSchema(),
         "Requires CLOUDFLARE_ACCOUNT_ID in base URL; models use @cf/ prefix"),
 
-    # Azure is special; host is resource-dependent
+    # Azure OpenAI (Microsoft Foundry) v1 API: no api-version, OpenAI-style paths.
+    # Host = our own resource (AZURE_OPENAI_HOST = resource name). Region is the
+    # resource + deployment type; we only create Data Zone (EU) deployments, so this
+    # slug is EU-resident. `model` = deployment name: name deployments after the
+    # OpenAI model id (e.g. `gpt-6.1-sol`). Billed as `openai` +10% (Data Zone
+    # uplift vs Global), see PRICED_AS. Excluded from the catalog export.
     "azure" => ProviderInfo(
-        "https://<resource>.openai.azure.com",
+        "https://<resource>.openai.azure.com/openai/v1",
         "api-key",
         "AZURE_OPENAI_API_KEY",
-        Dict("api-version" => "2023-03-15-preview"),
-        nothing,
-        ChatCompletionSchema(),
-        "Requires resource-specific host (AZURE_OPENAI_HOST) and deployment-based paths"),
+        Dict{String,String}(),
+        openai_model_transform,
+        ResponseSchema(),
+        "Azure OpenAI v1 Responses API, EU Data Zone deployments (AZURE_OPENAI_HOST = resource name)"),
 
     # Local / native providers
     "ollama" => ProviderInfo(

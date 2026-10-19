@@ -53,6 +53,18 @@ using Aqua
         @test parse(Float64, ep.pricing.completion) ≈ 1.1 * parse(Float64, base.pricing.completion)
     end
 
+    @testset "azure: v1 Responses API on our resource, openai pricing +10%" begin
+        withenv("AZURE_OPENAI_HOST" => "tfa-eu") do
+            info, model_id, ep = OpenRouter.parse_provider_model("azure:openai/gpt-6.1-sol")
+            _, _, base = OpenRouter.parse_provider_model("openai:openai/gpt-6.1-sol")
+            @test OpenRouter.resolve_base_url(info.base_url) == "https://tfa-eu.openai.azure.com/openai/v1"
+            @test info.schema isa OpenRouter.ResponseSchema
+            @test model_id == "gpt-6.1-sol"
+            @test ep.provider_name == "azure"
+            @test parse(Float64, ep.pricing.prompt) ≈ 1.1 * parse(Float64, base.pricing.prompt)
+        end
+    end
+
     @testset "cost calculation with cache" begin
         pricing = Pricing(
             prompt = "0.000002",
