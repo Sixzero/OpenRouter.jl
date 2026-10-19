@@ -56,6 +56,18 @@ const PROVIDER_INFO = Dict{String,ProviderInfo}(
         openai_model_transform,
         ResponseSchema(),
         "OpenAI Responses API (gpt-5+, o-series)"),
+    # OpenAI EU data residency (processed/stored in EEA). Same key: a Global-project
+    # key works on the eu host. Needs ZDR/MAM approval on the OpenAI org.
+    # Billed as `openai` +10% (OpenAI's data-residency uplift), see PRICED_AS.
+    # Not in the catalog export: pricier, reachable only via explicit `openai_eu:`.
+    "openai_eu" => ProviderInfo(
+        "https://eu.api.openai.com/v1",
+        "Bearer",
+        "OPENAI_API_KEY",
+        Dict{String,String}(),
+        openai_model_transform,
+        ResponseSchema(),
+        "OpenAI Responses API, EU data residency (eu.api.openai.com)"),
     "mistral" => ProviderInfo(
         "https://api.mistral.ai/v1",
         "Bearer",

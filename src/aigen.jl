@@ -326,9 +326,9 @@ function parse_provider_model(provider_model::AbstractString; endpoint_fetcher=l
                create_stub_endpoint(provider_name, lookup_model_id; pricing=twin.pricing)
     end
 
-    # `vertex:` is the same Gemini API as `google-ai-studio:`, so bill with that
-    # endpoint's pricing (the catalog has no "vertex" endpoint).
-    provider_lower = lc_name == "vertex" ? "google-ai-studio" : lowercase(provider_name)
+    # Alias slugs have no catalog endpoint of their own: bill with the twin's pricing.
+    twin_slug, price_mult = get(PRICED_AS, lc_name, (lc_name, 1.0))
+    provider_lower = twin_slug
     provider_endpoint = find_provider_endpoint(cached_model, provider_lower)
     if provider_endpoint === nothing
         # A cached provider list can predate a new hosting endpoint. Refresh once
@@ -342,7 +342,8 @@ function parse_provider_model(provider_model::AbstractString; endpoint_fetcher=l
     end
 
     # Handle endpoint override (tag contains ">original>override_provider")
-    if provider_endpoint.tag !== nothing && contains(provider_endpoint.tag, ">")
+    # (Not for priced-up aliases like openai_eu: the twin only lends pricing, never routing.)
+    if price_mult == 1.0 && provider_endpoint.tag !== nothing && contains(provider_endpoint.tag, ">")
         override_provider = split(provider_endpoint.tag, ">")[end]
         provider_info = get_provider_info(override_provider)
     end
@@ -350,7 +351,33 @@ function parse_provider_model(provider_model::AbstractString; endpoint_fetcher=l
     # Transform model name according to provider rules; re-append thinking suffix for the proxy.
     transformed_model_id = transform_model_name(provider_info, lookup_model_id) * model_suffix
 
+    if price_mult != 1.0
+        # Copy: the cached catalog endpoint is shared with the twin provider.
+        provider_endpoint = deepcopy(provider_endpoint)
+        provider_endpoint.provider_name = lc_name
+        provider_endpoint.pricing = scale_pricing(provider_endpoint.pricing, price_mult)
+    end
     return provider_info, transformed_model_id, provider_endpoint
+end
+
+"""
+Alias slug => (catalog provider it is billed as, price multiplier).
+- `vertex`: same Gemini API as `google-ai-studio` (no catalog endpoint of its own).
+- `openai_eu`: OpenAI EU data residency, +10% regional uplift.
+"""
+const PRICED_AS = Dict{String,Tuple{String,Float64}}(
+    "vertex"    => ("google-ai-studio", 1.0),
+    "openai_eu" => ("openai", 1.1),
+)
+
+scale_pricing(::Nothing, ::Float64) = nothing
+function scale_pricing(p::Pricing, k::Float64)
+    sc(x) = (v = x === nothing ? nothing : tryparse(Float64, x); v === nothing || v < 0 ? x : string(v * k))  # keep -1 sentinels
+    Pricing(; prompt=sc(p.prompt), completion=sc(p.completion), request=sc(p.request),
+        image=sc(p.image), web_search=sc(p.web_search), internal_reasoning=sc(p.internal_reasoning),
+        image_output=sc(p.image_output), audio=sc(p.audio), input_audio_cache=sc(p.input_audio_cache),
+        input_cache_read=sc(p.input_cache_read), input_cache_write=sc(p.input_cache_write),
+        discount=p.discount)
 end
 
 """

@@ -42,6 +42,17 @@ using Aqua
         @test model_id == "gemini-4-argon"
     end
 
+    @testset "openai_eu: EU host, openai pricing +10%" begin
+        info, model_id, ep = OpenRouter.parse_provider_model("openai_eu:openai/gpt-6.1-sol")
+        _, _, base = OpenRouter.parse_provider_model("openai:openai/gpt-6.1-sol")
+        @test info.base_url == "https://eu.api.openai.com/v1"
+        @test info.api_key_env_var == "OPENAI_API_KEY"
+        @test info.schema isa OpenRouter.ResponseSchema
+        @test model_id == "gpt-6.1-sol"
+        @test parse(Float64, ep.pricing.prompt) ≈ 1.1 * parse(Float64, base.pricing.prompt)
+        @test parse(Float64, ep.pricing.completion) ≈ 1.1 * parse(Float64, base.pricing.completion)
+    end
+
     @testset "cost calculation with cache" begin
         pricing = Pricing(
             prompt = "0.000002",

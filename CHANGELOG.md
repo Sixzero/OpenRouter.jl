@@ -2,6 +2,7 @@
 
 ## Unreleased
 
+- Add `openai_eu:` provider: OpenAI EU data residency (`eu.api.openai.com`, `OPENAI_API_KEY`), billed as the `openai` catalog endpoint +10%; alias pricing via `PRICED_AS` table (also covers `vertex`)
 - opencode_go: base URL → `https://opencode.ai/inference/go/v1`; Gemini ids use the Gemini-native protocol (`gemini-4-argon` → Go's `gemini-4-argon-contributor`); export flags Go `-contributor` endpoints `trains_on_data`
 - Add `vertex:` provider: the Gemini API (`GOOGLE_API_KEY`) under a slug CLIProxyAPI never rebinds, billed with the `google-ai-studio` catalog endpoint — for Google-only metered models such as `gemini-4-argon`
 - Fix Novita GLM models 404: map OpenRouter `z-ai/` ids to Novita's `zai-org/` namespace
