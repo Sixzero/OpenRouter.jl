@@ -1,6 +1,6 @@
 # Changelog
 
-## Unreleased
+## v1.4.5
 
 - `HttpStreamHooks.provenance`: per-call audit trail filled before `on_meta_ai` — API `host`, provider request-id headers (`x-request-id`, `x-amzn-requestid`, `apim-request-id`, `x-generation-id`, `x-ms-region`, …), `responseId`, `servedModel`, OpenRouter `upstream` provider
 - Add `openrouter_eu:` provider: OpenRouter EU in-region routing (`eu.openrouter.ai`, EU/EEA/UK/CH upstreams only, no out-of-region fallback; `OPENROUTER_EU_API_KEY` from a Business-plan org), same gateway handling as `openrouter` (passthrough id, `data_collection: deny`, usage-billed)
