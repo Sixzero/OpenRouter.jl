@@ -59,7 +59,6 @@ const EXCLUDED_PROVIDERS = Set([
     "mara",
     "modelrun",
     "morph",
-    "nebius",
     "nex-agi",
     "nextbit",
     "openinference",

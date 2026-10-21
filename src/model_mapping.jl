@@ -374,6 +374,31 @@ function novita_model_transform(model_id::AbstractString)::AbstractString
 end
 
 """
+    nebius_model_transform(model_id::String)::String
+
+Map OpenRouter model IDs to Nebius Token Factory's native (cased) IDs. Unknown ids
+pass through unchanged. Extend from https://tokenfactory.nebius.com/api/public/models_info.
+"""
+const NEBIUS_MODEL_MAP = Dict{String,String}(
+    "deepseek/deepseek-v4.1-flash" => "deepseek-ai/DeepSeek-V4.1-Flash",
+    "google/gemma-3-27b-it" => "google/gemma-3-27b-it",
+    "meta/muse-spark-open" => "meta-models/muse-spark-open",
+    "moonshotai/kimi-k2.7-code" => "moonshotai/Kimi-K2.7-Code",
+    "nousresearch/hermes-4-405b" => "NousResearch/Hermes-4-405B",
+    "nvidia/nemotron-3-nano-30b-a3b" => "nvidia/NVIDIA-Nemotron-3-Nano-30B-A3B",
+    "openai/gpt-oss-120b" => "openai/gpt-oss-120b",
+    "qwen/qwen3-235b-a22b-2507" => "Qwen/Qwen3-235B-A22B-Instruct-2507",
+    "qwen/qwen3-30b-a3b-instruct-2507" => "Qwen/Qwen3-30B-A3B-Instruct-2507",
+    "reflection/beam-1.0-501b-a23b" => "reflection/beam",
+    "z-ai/glm-5.1" => "zai-org/GLM-5.1",
+    "z-ai/glm-5.2" => "zai-org/GLM-5.2",
+    "z-ai/glm-5.3" => "zai-org/GLM-5.3",
+)
+
+nebius_model_transform(model_id::AbstractString)::AbstractString =
+    get(NEBIUS_MODEL_MAP, lowercase(model_id), model_id)
+
+"""
     cloudflare_model_transform(model_id::String)::String
 
 Transform OpenRouter model IDs to Cloudflare Workers AI format.

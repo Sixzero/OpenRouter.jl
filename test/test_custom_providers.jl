@@ -147,6 +147,14 @@ using OpenRouter: add_provider, remove_provider, add_model, remove_model, list_p
         remove_model("integration/test")
     end
 
+    @testset "Nebius model name transform" begin
+        using OpenRouter: nebius_model_transform
+        @test nebius_model_transform("z-ai/glm-5.1") == "zai-org/GLM-5.1"
+        @test nebius_model_transform("qwen/qwen3-235b-a22b-2507") == "Qwen/Qwen3-235B-A22B-Instruct-2507"
+        @test nebius_model_transform("unknown/model") == "unknown/model"
+        @test OpenRouter.PROVIDER_INFO["nebius"].api_key_env_var == "NEBIUS_API_KEY"
+    end
+
     @testset "Novita model name transform" begin
         using OpenRouter: novita_model_transform
         # Novita hosts Z.AI GLM models under `zai-org/`, OpenRouter uses `z-ai/`.

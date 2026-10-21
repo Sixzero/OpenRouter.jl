@@ -256,6 +256,16 @@ const PROVIDER_INFO = Dict{String,ProviderInfo}(
         siliconflow_model_transform,  # DeepInfra uses same cased IDs as SiliconFlow
         ChatCompletionSchema(),
         "OpenAI-compatible API"),
+    # Nebius Token Factory (NL). Region is per model (FI/FR, but also UK/US), so the
+    # provider as a whole is NOT EU-resident; inputs/outputs are stored unless opted out.
+    "nebius" => ProviderInfo(
+        "https://api.tokenfactory.nebius.com/v1",
+        "Bearer",
+        "NEBIUS_API_KEY",
+        Dict{String,String}(),
+        nebius_model_transform,
+        ChatCompletionSchema(),
+        "OpenAI-compatible API"),
     "hyperbolic" => ProviderInfo(
         "https://api.hyperbolic.xyz/v1",
         "Bearer",
