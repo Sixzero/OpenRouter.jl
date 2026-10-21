@@ -601,6 +601,37 @@ function build_opencode_go_specs(provider_slug::AbstractString, catalog_specs::V
     return specs
 end
 
+# ---------- Native-priced providers (not on OpenRouter) ----------
+
+"""
+Endpoints for providers in NATIVE_PRICING, merged onto the canonical catalog row.
+Context limits are inherited from the catalog twin; models without one are dropped.
+"""
+function build_native_priced_specs(catalog_specs::Vector)
+    catalog_by_id = Dict(d["id"] => d for d in catalog_specs if !isempty(d["endpoints"]))
+    specs = Any[]
+    for (provider_slug, table) in OpenRouter.NATIVE_PRICING, (model_id, pricing) in table
+        twin = get(catalog_by_id, model_id, nothing)
+        twin === nothing && (@warn "No catalog row for native-priced model" provider_slug model_id; continue)
+        twin_ep = twin["endpoints"][1]
+        push!(specs, Dict(
+            "id" => model_id,
+            "name" => twin["name"],
+            "created" => get(twin, "created", nothing),
+            "endpoints" => Any[Dict(
+                "provider_name" => provider_slug,
+                "endpoint_name" => "$provider_slug/$model_id",
+                "context_length" => twin_ep["context_length"],
+                "max_completion_tokens" => twin_ep["max_completion_tokens"],
+                "pricing" => pricing_to_numeric_dict(pricing),
+                "tag" => provider_slug,
+            )],
+        ))
+    end
+    println("Added $(length(specs)) native-priced endpoint(s)")
+    return specs
+end
+
 # ---------- Extra proxy-only models ----------
 #
 # Models served via cliproxyapi (OAuth) that are NOT in the OpenRouter catalog,
@@ -633,6 +664,7 @@ function build_models_data()
     # Ollama Cloud subscription cancelled — OpenCode Go covers these models.
     # merge_model_specs!(specs, build_ollama_specs("ollama_cloud", specs))
     merge_model_specs!(specs, build_opencode_go_specs("opencode_go", specs))
+    merge_model_specs!(specs, build_native_priced_specs(specs))
 
     # Append proxy-only models (cliproxyapi OAuth) missing from the catalog.
     existing_ids = Set(d["id"] for d in specs)

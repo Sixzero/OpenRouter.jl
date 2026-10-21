@@ -266,6 +266,17 @@ const PROVIDER_INFO = Dict{String,ProviderInfo}(
         nebius_model_transform,
         ChatCompletionSchema(),
         "OpenAI-compatible API"),
+    # Entrim (Slovenia, EU-owned, own datacenter): no prompt/output logging. Not on
+    # OpenRouter, so pricing comes from NATIVE_PRICING (entrim.ai/pricing).
+    "entrim" => ProviderInfo(
+        "https://api.entrim.ai/v1",
+        "Bearer",
+        "ENTRIM_API_KEY",
+        Dict{String,String}(),
+        entrim_model_transform,
+        ChatCompletionSchema(),
+        "OpenAI-compatible API, EU (SI) inference",
+        :reasoning_effort),
     "hyperbolic" => ProviderInfo(
         "https://api.hyperbolic.xyz/v1",
         "Bearer",
@@ -689,6 +700,26 @@ function create_stub_endpoint(provider_name::AbstractString, model_id::AbstractS
         max_prompt_tokens=nothing, supported_parameters=nothing, uptime_last_30m=nothing,
         supports_implicit_caching=nothing, status=nothing)
 end
+
+"""USD per 1M tokens -> Pricing (per token strings, like OpenRouter's catalog)."""
+per_million(prompt, completion, cache_read) = Pricing(; prompt=string(prompt / 1e6),
+    completion=string(completion / 1e6), request=nothing, image=nothing, web_search=nothing,
+    internal_reasoning=nothing, image_output=nothing, audio=nothing, input_audio_cache=nothing,
+    input_cache_read=string(cache_read / 1e6), input_cache_write=nothing, discount=nothing)
+
+"""
+Providers that OpenRouter does not list: provider => (OpenRouter model id => Pricing).
+Billing and the models_data export read these instead of the catalog endpoint.
+"""
+const NATIVE_PRICING = Dict{String,Dict{String,Pricing}}(
+    # entrim.ai/pricing (input, output, cached input) USD / 1M tokens
+    "entrim" => Dict(
+        "deepseek/deepseek-v4.1-flash" => per_million(0.20, 0.60, 0.005),
+        "z-ai/glm-5.3"                 => per_million(0.50, 2.00, 0.15),
+        "z-ai/glm-5.3-flash"           => per_million(0.10, 0.35, 0.0175),
+        "qwen/qwen3.8-27b"             => per_million(0.10, 0.40, 0.04),
+    ),
+)
 
 const ZERO_PRICING = Pricing("0", "0", "0", "0", "0", "0", nothing, nothing, nothing, "0", nothing, nothing)
 

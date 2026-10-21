@@ -399,6 +399,21 @@ nebius_model_transform(model_id::AbstractString)::AbstractString =
     get(NEBIUS_MODEL_MAP, lowercase(model_id), model_id)
 
 """
+    entrim_model_transform(model_id::String)::String
+
+Map OpenRouter model IDs to Entrim's native (case-sensitive) IDs.
+"""
+const ENTRIM_MODEL_MAP = Dict{String,String}(
+    "deepseek/deepseek-v4.1-flash" => "deepseek-ai/DeepSeek-V4.1-Flash",
+    "z-ai/glm-5.3" => "zai-org/GLM-5.3",
+    "z-ai/glm-5.3-flash" => "zai-org/GLM-5.3-Flash",
+    "qwen/qwen3.8-27b" => "Qwen/Qwen3.8-27B",
+)
+
+entrim_model_transform(model_id::AbstractString)::AbstractString =
+    get(ENTRIM_MODEL_MAP, lowercase(model_id), model_id)
+
+"""
     cloudflare_model_transform(model_id::String)::String
 
 Transform OpenRouter model IDs to Cloudflare Workers AI format.

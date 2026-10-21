@@ -155,6 +155,15 @@ using OpenRouter: add_provider, remove_provider, add_model, remove_model, list_p
         @test OpenRouter.PROVIDER_INFO["nebius"].api_key_env_var == "NEBIUS_API_KEY"
     end
 
+    @testset "Entrim native pricing" begin
+        info, native, ep = OpenRouter.parse_provider_model("entrim:deepseek/deepseek-v4.1-flash(high)")
+        @test info.base_url == "https://api.entrim.ai/v1"
+        @test native == "deepseek-ai/DeepSeek-V4.1-Flash(high)"
+        @test parse(Float64, ep.pricing.prompt) ≈ 0.20e-6
+        @test parse(Float64, ep.pricing.completion) ≈ 0.60e-6
+        @test_throws ArgumentError OpenRouter.parse_provider_model("entrim:anthropic/claude-x")
+    end
+
     @testset "Novita model name transform" begin
         using OpenRouter: novita_model_transform
         # Novita hosts Z.AI GLM models under `zai-org/`, OpenRouter uses `z-ai/`.

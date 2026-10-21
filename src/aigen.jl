@@ -328,6 +328,15 @@ function parse_provider_model(provider_model::AbstractString; endpoint_fetcher=l
                create_stub_endpoint(provider_name, lookup_model_id; pricing=twin.pricing)
     end
 
+    # Providers OpenRouter doesn't list: our own price table (NATIVE_PRICING).
+    native = get(NATIVE_PRICING, lc_name, nothing)
+    if native !== nothing
+        pricing = get(native, lookup_model_id, nothing)
+        pricing === nothing && throw(ArgumentError("Provider $provider_name does not host model $lookup_model_id. Available: $(join(sort(collect(keys(native))), ", "))"))
+        transformed_model_id = transform_model_name(provider_info, lookup_model_id) * model_suffix
+        return provider_info, transformed_model_id, create_stub_endpoint(provider_name, lookup_model_id; pricing)
+    end
+
     # Alias slugs have no catalog endpoint of their own: bill with the twin's pricing.
     twin_slug, price_mult = get(PRICED_AS, lc_name, (lc_name, 1.0))
     provider_lower = twin_slug
