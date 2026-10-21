@@ -278,6 +278,9 @@ Process chunk and print it. Wrapper for:
     return nothing
 end
 
+# Only HttpStreamHooks keeps an audit trail; other callbacks ignore it.
+record_response_provenance!(::AbstractLLMStream, url, response) = nothing
+
 """
     handle_error_message(chunk::AbstractStreamChunk; kwargs...)
 
@@ -435,6 +438,7 @@ function _open_sse_stream(cb::AbstractLLMStream, url, headers, input::String; ve
         # The body read shares the same first-phase deadline: an upstream that sends
         # error headers then goes silent must not hang either.
         response.status >= 400 && throw_stream_http_error(response, stream, input; timeout=eff_timeout(), fired=idle_fired)
+        record_response_provenance!(cb, url, response)
 
         # Success path: SSE schemas must declare a single event-stream Content-Type.
         # Non-SSE schemas (e.g. Ollama NDJSON, `application/json`) skip this check.

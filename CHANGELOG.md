@@ -2,6 +2,7 @@
 
 ## Unreleased
 
+- `HttpStreamHooks.provenance`: per-call audit trail filled before `on_meta_ai` — API `host`, provider request-id headers (`x-request-id`, `x-amzn-requestid`, `apim-request-id`, `x-generation-id`, `x-ms-region`, …), `responseId`, `servedModel`, OpenRouter `upstream` provider
 - Add `openrouter_eu:` provider: OpenRouter EU in-region routing (`eu.openrouter.ai`, EU/EEA/UK/CH upstreams only, no out-of-region fallback; `OPENROUTER_EU_API_KEY` from a Business-plan org), same gateway handling as `openrouter` (passthrough id, `data_collection: deny`, usage-billed)
 - Add `vertex_eu:` provider (`vertex_eu:anthropic/…`, Anthropic models only for now): Claude on Google Vertex AI EU multi-region (`aiplatform.eu.rep.googleapis.com`, `locations/eu`, rawPredict/streamRawPredict), `GOOGLE_CLOUD_PROJECT` + `GOOGLE_APPLICATION_CREDENTIALS` (service-account or ADC JSON, content or path) exchanged for a cached OAuth token; billed as `anthropic` +10%
 - Add `anthropic_eu:` provider: Claude on Amazon Bedrock via the `eu.` cross-region inference profile (bedrock-runtime Anthropic Messages path, `AWS_BEARER_TOKEN_BEDROCK`), billed as `anthropic` +10%

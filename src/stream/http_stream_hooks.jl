@@ -87,6 +87,10 @@ A stream callback that combines token counting with customizable hooks for vario
     # Provider endpoint for cost calculation
     provider_endpoint::Union{ProviderEndpoint, Nothing} = nothing
 
+    # Audit trail of who served the call: host, provider request ids, response id,
+    # upstream provider (OpenRouter `provider`). Filled before `on_meta_ai` fires.
+    provenance::Dict{String,Any} = Dict{String,Any}()
+
     # Hooks with default implementations
     content_formatter::Function = identity
     reasoning_formatter::Function = text -> "$(REASONING_COLOR)$text$(RESET_COLOR)"
@@ -111,6 +115,37 @@ function configure_stream_callback!(cb::HttpStreamHooks, schema::AbstractRequest
     cb.schema = schema
     cb.provider_endpoint = provider_endpoint
     return cb
+end
+
+# Response headers that identify a request on the provider side (support tickets, provider logs).
+const PROVENANCE_HEADERS = ("x-request-id", "request-id", "x-amzn-requestid", "apim-request-id",
+                            "x-generation-id", "x-ms-region", "x-ms-served-model")
+
+function record_response_provenance!(cb::HttpStreamHooks, url, response)
+    empty!(cb.provenance)  # a retried request reuses the hooks: keep only the call that answered
+    cb.provenance["host"] = HTTP.URI(url).host
+    for (k, v) in response.headers
+        lk = lowercase(k)
+        lk in PROVENANCE_HEADERS && (cb.provenance[lk] = v)
+    end
+    return nothing
+end
+
+# First value seen wins, per field: response id (OpenAI-compat `id`, Anthropic `message.id`,
+# Responses API `response.id`, Gemini `responseId`), served model, OpenRouter's upstream `provider`.
+function record_chunk_provenance!(p::Dict{String,Any}, chunk::StreamChunk)
+    j = chunk.json
+    j isa JSON3.Object || return nothing
+    first!(k, v) = v isa AbstractString && !isempty(v) && !haskey(p, k) && (p[k] = String(v))
+    for o in (j, get(j, :message, nothing), get(j, :response, nothing))
+        o isa JSON3.Object || continue
+        first!("responseId", get(o, :id, nothing))
+        first!("servedModel", get(o, :model, nothing))
+    end
+    first!("responseId", get(j, :responseId, nothing))
+    first!("servedModel", get(j, :modelVersion, nothing))
+    first!("upstream", get(j, :provider, nothing))
+    return nothing
 end
 
 # Extract model from chunk based on schema
@@ -214,6 +249,7 @@ function callback(cb::HttpStreamHooks, chunk::StreamChunk; kwargs...)
     if isnothing(cb.model)
         cb.model = extract_model_from_chunk(cb.schema, chunk)
     end
+    record_chunk_provenance!(cb.provenance, chunk)
 
     # Handle content. Not elseif: a Mistral block-array delta can carry both.
     # include_thinking=false: reasoning was just routed above; Anthropic's extract_content
