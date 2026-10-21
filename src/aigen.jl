@@ -284,6 +284,8 @@ function parse_provider_model(provider_model::AbstractString; endpoint_fetcher=l
     provider_info === nothing && throw(ArgumentError("Unknown provider: $provider_name. Available: $(join(sort(list_known_providers()), ", "))"))
 
     lc_name = lowercase(provider_name)
+    # Bedrock rejects `(…)` in model ids; no thinking-suffix conversion for it yet, so drop it.
+    lc_name == "anthropic_eu" && (model_suffix = "")
 
     # Early return for echo providers - skip model lookup entirely (avoids network during precompile)
     if startswith(lc_name, "echo")
@@ -365,11 +367,13 @@ Alias slug => (catalog provider it is billed as, price multiplier).
 - `vertex`: same Gemini API as `google-ai-studio` (no catalog endpoint of its own).
 - `openai_eu`: OpenAI EU data residency, +10% regional uplift.
 - `azure`: Azure OpenAI EU Data Zone deployments, +10% vs Global.
+- `anthropic_eu`: Claude on Bedrock EU regional endpoint, +10% regional uplift.
 """
 const PRICED_AS = Dict{String,Tuple{String,Float64}}(
     "vertex"    => ("google-ai-studio", 1.0),
     "openai_eu" => ("openai", 1.1),
     "azure"     => ("openai", 1.1),
+    "anthropic_eu" => ("anthropic", 1.1),
 )
 
 scale_pricing(::Nothing, ::Float64) = nothing

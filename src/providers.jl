@@ -189,6 +189,18 @@ const PROVIDER_INFO = Dict{String,ProviderInfo}(
         anthropic_model_transform,
         AnthropicSchema(),
         "Uses Anthropic's native API format"),
+    # Claude on Amazon Bedrock, EU: bedrock-runtime's Anthropic Messages API path with
+    # an `eu.` cross-region inference profile (routes only within EU regions).
+    # Bedrock API key in x-api-key. +10% vs global (see PRICED_AS).
+    # (bedrock-mantle lists no Anthropic models for new accounts, so not used.)
+    "anthropic_eu" => ProviderInfo(
+        "https://bedrock-runtime.eu-central-1.amazonaws.com/anthropic",
+        "x-api-key",
+        "AWS_BEARER_TOKEN_BEDROCK",
+        Dict("anthropic-version" => "2023-06-01"),
+        bedrock_eu_model_transform,
+        AnthropicSchema(),
+        "Claude on Amazon Bedrock, EU inference profile (EU data residency), Messages API"),
     "cohere" => ProviderInfo(
         "https://api.cohere.ai/v1",
         "Bearer",

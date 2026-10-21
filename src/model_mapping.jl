@@ -76,6 +76,18 @@ function anthropic_model_transform(model_id::AbstractString)::AbstractString
 end
 
 """
+    bedrock_eu_model_transform(model_id)
+
+Bedrock EU inference profile id: `anthropic/claude-haiku-5.5` → `eu.anthropic.claude-haiku-5-5`;
+dated legacy ids get Bedrock's `-v1:0` (`…haiku-4-5-20251001` → `…-20251001-v1:0`).
+"""
+function bedrock_eu_model_transform(model_id::AbstractString)::AbstractString
+    id = anthropic_model_transform(model_id)
+    occursin(r"-\d{8}$", id) && (id *= "-v1:0")
+    return "eu.anthropic." * id
+end
+
+"""
     google_model_transform(model_id::String)::String
 
 Transform model IDs for Google. Removes google/ prefix.

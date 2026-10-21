@@ -65,6 +65,21 @@ using Aqua
         end
     end
 
+    @testset "anthropic_eu: Bedrock EU inference profile, anthropic pricing +10%" begin
+        @test OpenRouter.bedrock_eu_model_transform("anthropic/claude-haiku-5.5") == "eu.anthropic.claude-haiku-5-5"
+        @test OpenRouter.bedrock_eu_model_transform("anthropic/claude-haiku-4.5") == "eu.anthropic.claude-haiku-4-5-20251001-v1:0"
+        info, model_id, ep = OpenRouter.parse_provider_model("anthropic_eu:anthropic/claude-haiku-4.5")
+        _, _, base = OpenRouter.parse_provider_model("anthropic:anthropic/claude-haiku-4.5")
+        @test info.base_url == "https://bedrock-runtime.eu-central-1.amazonaws.com/anthropic"
+        @test info.schema isa OpenRouter.AnthropicSchema
+        @test model_id == "eu.anthropic.claude-haiku-4-5-20251001-v1:0"
+        @test parse(Float64, ep.pricing.prompt) ≈ 1.1 * parse(Float64, base.pricing.prompt)
+        @test info.auth_header_format == "x-api-key"
+        @test info.default_headers["anthropic-version"] == "2023-06-01"
+        _, sfx_id, _ = OpenRouter.parse_provider_model("anthropic_eu:anthropic/claude-haiku-4.5(high)")
+        @test sfx_id == "eu.anthropic.claude-haiku-4-5-20251001-v1:0"  # suffix dropped, Bedrock rejects it
+    end
+
     @testset "cost calculation with cache" begin
         pricing = Pricing(
             prompt = "0.000002",
