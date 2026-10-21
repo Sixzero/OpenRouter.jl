@@ -196,9 +196,15 @@ Anthropic Claude-style request schema.
 """
 struct AnthropicSchema <: AbstractRequestSchema
     endpoint::String
+    # Vertex AI rawPredict: model goes in the URL, `anthropic_version` in the body.
+    vertex::Bool
 
-    AnthropicSchema() = new("/v1/messages")
+    AnthropicSchema() = new("/v1/messages", false)
+    AnthropicSchema(endpoint::AbstractString, vertex::Bool) = new(endpoint, vertex)
 end
+
+"Claude on Vertex AI: `<base>/<model>:rawPredict` (`:streamRawPredict` when streaming)."
+VertexAnthropicSchema() = AnthropicSchema("/{model}:rawPredict", true)
 
 # OpenAI → Anthropic tool_choice translation
 function convert_tool_choice(::AnthropicSchema, tool_choice::AbstractString)
@@ -306,6 +312,11 @@ function build_payload(schema::AnthropicSchema, prompt, model_id::AbstractString
         end
     end
     
+    # Vertex: model is in the URL; applied last so api kwargs can't undo it.
+    if schema.vertex
+        delete!(payload, "model")
+        payload["anthropic_version"] = "vertex-2023-10-16"
+    end
     return payload
 end
 
@@ -313,7 +324,10 @@ end
 Build the URL for AnthropicSchema.
 """
 function build_url(schema::AnthropicSchema, base_url::AbstractString, model_id::AbstractString, stream::Bool = false)
-    return "$(base_url)$(schema.endpoint)"
+    schema.vertex || return "$(base_url)$(schema.endpoint)"
+    endpoint = replace(schema.endpoint, "{model}" => model_id)
+    stream && (endpoint = replace(endpoint, ":rawPredict" => ":streamRawPredict"))
+    return "$(base_url)$(endpoint)"
 end
 
 """

@@ -80,6 +80,34 @@ using Aqua
         @test sfx_id == "eu.anthropic.claude-haiku-4-5-20251001-v1:0"  # suffix dropped, Bedrock rejects it
     end
 
+    @testset "vertex_eu: Vertex EU multi-region rawPredict, anthropic pricing +10%" begin
+        @test OpenRouter.vertex_model_transform("anthropic/claude-haiku-4.5") == "claude-haiku-4-5"
+        @test OpenRouter.vertex_model_transform("anthropic/claude-opus-4.8") == "claude-opus-4-8"
+        withenv("GOOGLE_CLOUD_PROJECT" => "proj-x") do
+            info, model_id, ep = OpenRouter.parse_provider_model("vertex_eu:anthropic/claude-haiku-4.5(high)")
+            _, _, base = OpenRouter.parse_provider_model("anthropic:anthropic/claude-haiku-4.5")
+            @test model_id == "claude-haiku-4-5"  # suffix dropped
+            @test parse(Float64, ep.pricing.prompt) ≈ 1.1 * parse(Float64, base.pricing.prompt)
+            root = OpenRouter.resolve_base_url(info.base_url)
+            @test OpenRouter.build_url(info.schema, root, model_id) ==
+                  "https://aiplatform.eu.rep.googleapis.com/v1/projects/proj-x/locations/eu/publishers/anthropic/models/claude-haiku-4-5:rawPredict"
+            @test endswith(OpenRouter.build_url(info.schema, root, model_id, true), ":streamRawPredict")
+            p = OpenRouter.build_payload(info.schema, "hi", model_id, nothing, true)
+            @test !haskey(p, "model") && p["anthropic_version"] == "vertex-2023-10-16" && p["stream"] == true
+        end
+        @test haskey(OpenRouter.build_payload(OpenRouter.AnthropicSchema(), "hi", "m", nothing), "model")
+        fx = joinpath(@__DIR__, "fixtures")
+        jwt = OpenRouter.google_jwt(Dict("client_email" => "a@b", "private_key" => read(joinpath(fx, "test_rsa.pem"), String)), 100)
+        h, c, sig = split(jwt, ".")
+        unb64(x) = OpenRouter.base64decode(x * repeat("=", mod(-length(x), 4)) |> y -> replace(y, '-' => '+', '_' => '/'))
+        claims = OpenRouter.JSON3.read(unb64(c))
+        @test claims.iss == "a@b" && claims.iat == 100 && claims.exp == 3700 && claims.aud == OpenRouter.GOOGLE_TOKEN_URI
+        pub = OpenRouter.MbedTLS.PKContext()
+        OpenRouter.MbedTLS.parse_public_key!(pub, read(joinpath(fx, "test_rsa.pub"), String))
+        @test OpenRouter.MbedTLS.verify(pub, OpenRouter.MbedTLS.MD_SHA256,
+            OpenRouter.MbedTLS.digest(OpenRouter.MbedTLS.MD_SHA256, "$h.$c"), unb64(sig)) == 0
+    end
+
     @testset "cost calculation with cache" begin
         pricing = Pricing(
             prompt = "0.000002",

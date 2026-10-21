@@ -88,6 +88,14 @@ function bedrock_eu_model_transform(model_id::AbstractString)::AbstractString
 end
 
 """
+    vertex_model_transform(model_id)
+
+Vertex AI Claude id: bare dashed name, no date (`anthropic/claude-haiku-4.5` → `claude-haiku-4-5`).
+"""
+vertex_model_transform(model_id::AbstractString)::AbstractString =
+    replace(anthropic_model_transform(model_id), r"-\d{8}$" => "")
+
+"""
     google_model_transform(model_id::String)::String
 
 Transform model IDs for Google. Removes google/ prefix.

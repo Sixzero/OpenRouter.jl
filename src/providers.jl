@@ -201,6 +201,17 @@ const PROVIDER_INFO = Dict{String,ProviderInfo}(
         bedrock_eu_model_transform,
         AnthropicSchema(),
         "Claude on Amazon Bedrock, EU inference profile (EU data residency), Messages API"),
+    # Claude on Google Vertex AI, EU multi-region (processing stays in the EU).
+    # No API keys on Vertex: GOOGLE_APPLICATION_CREDENTIALS = service-account (or gcloud ADC)
+    # JSON content or path, exchanged for a cached OAuth token. +10% vs global (see PRICED_AS).
+    "vertex_eu" => ProviderInfo(
+        "https://aiplatform.eu.rep.googleapis.com/v1/projects/<gcp_project>/locations/eu/publishers/anthropic/models",
+        "google-oauth",
+        "GOOGLE_APPLICATION_CREDENTIALS",
+        Dict{String,String}(),
+        vertex_model_transform,
+        VertexAnthropicSchema(),
+        "Claude on Google Vertex AI, EU multi-region endpoint (EU data residency), rawPredict"),
     "cohere" => ProviderInfo(
         "https://api.cohere.ai/v1",
         "Bearer",
@@ -504,6 +515,7 @@ end
 const BASE_URL_ENV_PLACEHOLDERS = Dict(
     "<account_id>" => "CLOUDFLARE_ACCOUNT_ID",
     "<resource>"   => "AZURE_OPENAI_HOST",
+    "<gcp_project>" => "GOOGLE_CLOUD_PROJECT",
 )
 
 """Resolve env-var placeholders (e.g. `<account_id>`) in a base URL. No-op for URLs without `<`."""
@@ -537,6 +549,8 @@ function get_provider_auth_header(info::ProviderInfo, api_key::AbstractString)::
         "api-key" => api_key
     elseif info.auth_header_format == "x-goog-api-key"
         "x-goog-api-key" => api_key
+    elseif info.auth_header_format == "google-oauth"  # api_key = credentials JSON or path
+        "Authorization" => "Bearer $(google_access_token(api_key))"
     else
         "Authorization" => "$(info.auth_header_format) $api_key"
     end

@@ -2,6 +2,7 @@
 
 ## Unreleased
 
+- Add `vertex_eu:` provider (`vertex_eu:anthropic/…`, Anthropic models only for now): Claude on Google Vertex AI EU multi-region (`aiplatform.eu.rep.googleapis.com`, `locations/eu`, rawPredict/streamRawPredict), `GOOGLE_CLOUD_PROJECT` + `GOOGLE_APPLICATION_CREDENTIALS` (service-account or ADC JSON, content or path) exchanged for a cached OAuth token; billed as `anthropic` +10%
 - Add `anthropic_eu:` provider: Claude on Amazon Bedrock via the `eu.` cross-region inference profile (bedrock-runtime Anthropic Messages path, `AWS_BEARER_TOKEN_BEDROCK`), billed as `anthropic` +10%
 - `azure:` provider modernized to the Azure OpenAI (Foundry) v1 API: `https://<AZURE_OPENAI_HOST>.openai.azure.com/openai/v1`, Responses API, no api-version; EU Data Zone deployments named after the OpenAI model id; billed as `openai` +10% via `PRICED_AS`
 - Add `openai_eu:` provider: OpenAI EU data residency (`eu.api.openai.com`, `OPENAI_API_KEY`), billed as the `openai` catalog endpoint +10%; alias pricing via `PRICED_AS` table (also covers `vertex`)
