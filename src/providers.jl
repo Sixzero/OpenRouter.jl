@@ -23,6 +23,10 @@ ProviderInfo(base_url, auth, env, headers, transform, schema, notes) =
 # OpenRouter gateway base URL. Providers pointing here (openrouter, crucible, ...) route
 # requests through openrouter.ai and skip native endpoint metadata matching (see parse_provider_model).
 const OPENROUTER_GATEWAY_URL = "https://openrouter.ai/api/v1"
+# EU in-region routing: decrypted and served only by EU/EEA/UK/CH provider endpoints, no
+# fallback out of region. Needs the OpenRouter Business plan on the key's org.
+const OPENROUTER_EU_GATEWAY_URL = "https://eu.openrouter.ai/api/v1"
+is_openrouter_gateway(info) = info.base_url in (OPENROUTER_GATEWAY_URL, OPENROUTER_EU_GATEWAY_URL)
 
 """
 Route only to OpenRouter upstreams that don't train on inputs. Request-level, so it holds
@@ -36,13 +40,14 @@ end
 
 # Build an OpenRouter-gateway ProviderInfo. `crucible` etc. are OpenRouter-only upstreams
 # exposed as their own provider slug; the full model id (incl. `:free`) is passed through.
-openrouter_gateway(notes::String) = ProviderInfo(
-    OPENROUTER_GATEWAY_URL, "Bearer", "OPENROUTER_API_KEY",
+openrouter_gateway(notes::String, url::String=OPENROUTER_GATEWAY_URL, env::String="OPENROUTER_API_KEY") = ProviderInfo(
+    url, "Bearer", env,
     Dict{String,String}(), nothing, ChatCompletionSchema(), notes)
 
 const PROVIDER_INFO = Dict{String,ProviderInfo}(
     # OpenRouter gateway providers: OpenAI-compatible, model id passed through as author/model[:variant].
     "openrouter" => openrouter_gateway("OpenRouter gateway"),
+    "openrouter_eu" => openrouter_gateway("OpenRouter EU in-region routing (Business-plan org key)", OPENROUTER_EU_GATEWAY_URL, "OPENROUTER_EU_API_KEY"),
     "crucible"   => openrouter_gateway("OpenRouter-only upstream (Crucible); routed via openrouter.ai"),
     "stealth"    => openrouter_gateway("OpenRouter cloaked/stealth upstream; routed via openrouter.ai"),
     "poolside"   => openrouter_gateway("Poolside (laguna) upstream; routed via openrouter.ai"),

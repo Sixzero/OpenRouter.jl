@@ -80,6 +80,16 @@ using Aqua
         @test sfx_id == "eu.anthropic.claude-haiku-4-5-20251001-v1:0"  # suffix dropped, Bedrock rejects it
     end
 
+    @testset "openrouter_eu: EU in-region gateway, passthrough id, data_collection deny" begin
+        info, mid, ep = OpenRouter.parse_provider_model("openrouter_eu:openai/gpt-6.1-sol")
+        @test info.base_url == "https://eu.openrouter.ai/api/v1"
+        @test mid == "openai/gpt-6.1-sol"
+        @test info.api_key_env_var == "OPENROUTER_EU_API_KEY"
+        @test OpenRouter.is_openrouter_gateway(info)
+        @test OpenRouter.is_openrouter_gateway(OpenRouter.get_provider_info("openrouter"))
+        @test !OpenRouter.is_openrouter_gateway(OpenRouter.get_provider_info("openai"))
+    end
+
     @testset "vertex_eu: Vertex EU multi-region rawPredict, anthropic pricing +10%" begin
         @test OpenRouter.vertex_model_transform("anthropic/claude-haiku-4.5") == "claude-haiku-4-5"
         @test OpenRouter.vertex_model_transform("anthropic/claude-opus-4.8") == "claude-opus-4-8"

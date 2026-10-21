@@ -202,7 +202,7 @@ function _aigen_core(prompt, provider_info::ProviderInfo, model_id::AbstractStri
     kwargs = with_default_max_tokens(protocolSchema, provider_endpoint, kwargs)
     model_id, kwargs = with_thinking_suffix(provider_info, model_id, kwargs)
     payload = build_payload(protocolSchema, prompt, model_id, sys_msg, stream_flag; kwargs...)
-    provider_info.base_url == OPENROUTER_GATEWAY_URL && deny_data_collection!(payload)
+    is_openrouter_gateway(provider_info) && deny_data_collection!(payload)
     !isnothing(verbose) && !!verbose && @show payload
     
     # Build headers
@@ -296,7 +296,7 @@ function parse_provider_model(provider_model::AbstractString; endpoint_fetcher=l
     # OpenRouter gateway providers (openrouter, crucible, ...): pass the full model id
     # through (incl. `:free`/variant suffixes) and skip endpoint metadata matching -
     # OpenRouter handles upstream provider routing itself.
-    if provider_info.base_url == OPENROUTER_GATEWAY_URL
+    if is_openrouter_gateway(provider_info)
         transformed_model_id = transform_model_name(provider_info, lookup_model_id) * model_suffix
         return provider_info, transformed_model_id, create_stub_endpoint(provider_name, lookup_model_id)
     end
