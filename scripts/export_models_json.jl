@@ -530,7 +530,8 @@ end
 # ---------- OpenCode Go subscription catalog ----------
 
 # Haiku always goes direct (anthropic / cliproxy), never through OpenCode Go.
-const OPENCODE_GO_EXCLUDED_MODELS = Set(["gpt-5.6-luna", "grok-4.5", "grok-4.6", "claude-haiku-5-5"])
+# Argon runs on Antigravity (CLIProxyAPI); Go only sells the trains-on-data `-contributor` twin.
+const OPENCODE_GO_EXCLUDED_MODELS = Set(["gpt-5.6-luna", "grok-4.5", "grok-4.6", "claude-haiku-5-5", "gemini-4-argon-contributor"])
 
 """
 Build namespaced model specs for OpenCode Go. Pricing and context are inherited
