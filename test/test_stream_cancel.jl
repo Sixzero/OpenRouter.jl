@@ -81,6 +81,61 @@ using Sockets
         @test t < 5
     end
 
+    @testset "formatter cancel must not drain the remaining HTTP body" begin
+        # Deterministic race: set the flag and throw in the SAME callback, before
+        # the 100ms watcher can run. Keep-alive HTTP cleanup must not drain SSE.
+        # No provider/LLM calls. The server is released after 2s as a safety bound.
+        for formatter in (:content_formatter, :reasoning_formatter)
+            flag = Threads.Atomic{Bool}(false)
+            cancelled_at = Ref{UInt64}(0)
+            released_at = Ref{UInt64}(0)
+            field = formatter == :content_formatter ? "content" : "reasoning_content"
+            chunk = sse_chunk("data: {\"choices\":[{\"delta\":{\"$field\":\"hi\"},\"index\":0}]}\n\n")
+            release = Channel{Nothing}(1)
+            format = _ -> begin
+                cancelled_at[] = time_ns()
+                flag[] = true
+                put!(release, nothing)
+                throw(InterruptException())
+            end
+            port, teardown = serve() do sock
+                readavailable(sock)
+                write(sock, const_headers, chunk)
+                take!(release)
+                # Timer is intentional: it bounds a broken client's body drain,
+                # and starts only after the callback (not before Julia JIT).
+                sleep(2)
+                released_at[] = time_ns()
+                write(sock, done_chunk)
+                close(sock)
+            end
+            cb = OpenRouter.HttpStreamHooks(; schema=OpenRouter.ChatCompletionSchema(),
+                out=devnull, (formatter => format,)...)
+            try
+                err = try
+                    OpenRouter.streamed_request!(cb, "http://127.0.0.1:$port/v1/x",
+                        ["Content-Type" => "application/json"], "{}";
+                        stream_idle_timeout=5.0, stream_first_chunk_timeout=5.0,
+                        stream_cancel_flag=flag, retry=false)
+                    nothing
+                catch e
+                    e
+                end
+                returned_at = time_ns()
+                @test cancelled_at[] > 0
+                @test err isa InterruptException
+                delay_ms = (returned_at - cancelled_at[]) / 1e6
+                @info "formatter cancellation timing" formatter delay_ms drained=(released_at[] != 0)
+                # Known bug, documented until the socket-abort fix lands. This
+                # becomes an ordinary @test when HTTP cleanup stops draining.
+                @test_broken released_at[] == 0
+            finally
+                close(release)
+                teardown()
+            end
+        end
+    end
+
     @testset "unset flag never interferes with a healthy stream" begin
         port, teardown = serve() do sock
             readavailable(sock)
