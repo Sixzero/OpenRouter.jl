@@ -179,10 +179,10 @@ const SUPERSEDED_MODELS = Set([
     "openai/gpt-5.6-luna-pro", "openai/gpt-5.6-sol-pro", "openai/gpt-5.6-terra-pro",
     "openai/gpt-6-astra-pro", "openai/gpt-6-sol-pro", "openai/gpt-6-luna-pro",
     "openai/gpt-6.1-sol-pro",
-    # gemini: keep only text-chat flagships — 3.7-flash + 3.1-pro-preview.
-    # Drop 2.5-pro (superseded by 3.1-pro) and all image/lite/customtools/older
-    # flash/pro variants.
-    "google/gemini-2.5-pro",
+    # gemini: keep only text-chat flagships — 4-argon + 3.7/3.8-flash.
+    # Drop 2.5-pro / 3.1-pro-preview (superseded by 4-argon) and all
+    # image/lite/customtools/older flash/pro variants.
+    "google/gemini-2.5-pro", "google/gemini-3.1-pro-preview",
     "google/gemini-3.1-pro-preview-customtools",
     "google/gemini-3.1-flash-image", "google/gemini-3.1-flash-image-preview",
     "google/gemini-3.1-flash-lite", "google/gemini-3.1-flash-lite-preview",
