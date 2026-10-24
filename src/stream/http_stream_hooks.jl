@@ -99,6 +99,9 @@ A stream callback that combines token counting with customizable hooks for vario
     on_done::Function = () -> nothing
     on_start::Function = () -> nothing
     on_stop_sequence::Function = identity
+    # Live tool-call arguments: (index, id, name, args_delta). id/name are set on the
+    # first event of a call and `nothing` afterwards; `index` ties deltas together.
+    on_tool_delta::Function = (index, id, name, args) -> nothing
 end
 
 # Default formatters
@@ -186,6 +189,53 @@ extract_reasoning_from_chunk(schema::AbstractRequestSchema, chunk::AbstractStrea
 # Default: no ttft_ms extraction
 extract_ttft_ms(schema::AbstractRequestSchema, chunk::AbstractStreamChunk) = nothing
 
+# Streamed tool-call argument deltas: Vector of (; index, id, name, args).
+# Gemini/Ollama deliver whole calls, so they have none.
+const NO_TOOL_DELTAS = NamedTuple{(:index, :id, :name, :args), Tuple{Int, Any, Any, String}}[]
+extract_tool_deltas(::AbstractRequestSchema, chunk::AbstractStreamChunk) = NO_TOOL_DELTAS
+
+_tool_delta(index, id, name, args) = (; index=Int(index), id, name, args=string(something(args, "")))
+
+function extract_tool_deltas(::ChatCompletionSchema, chunk::AbstractStreamChunk)
+    isnothing(chunk.json) && return NO_TOOL_DELTAS
+    choices = get(chunk.json, :choices, [])
+    isempty(choices) && return NO_TOOL_DELTAS
+    tcs = get(get(choices[1], :delta, Dict()), :tool_calls, nothing)
+    tcs isa AbstractVector || return NO_TOOL_DELTAS
+    map(tcs) do tc
+        fn = something(get(tc, :function, nothing), Dict())
+        _tool_delta(get(tc, :index, 0), get(tc, :id, nothing), get(fn, :name, nothing), get(fn, :arguments, nothing))
+    end
+end
+
+function extract_tool_deltas(::AnthropicSchema, chunk::AbstractStreamChunk)
+    isnothing(chunk.json) && return NO_TOOL_DELTAS
+    t = get(chunk.json, :type, nothing)
+    idx = get(chunk.json, :index, 0)
+    if t == "content_block_start"
+        b = get(chunk.json, :content_block, Dict())
+        get(b, :type, nothing) == "tool_use" && return [_tool_delta(idx, get(b, :id, nothing), get(b, :name, nothing), "")]
+    elseif t == "content_block_delta"
+        d = get(chunk.json, :delta, Dict())
+        get(d, :type, nothing) == "input_json_delta" && return [_tool_delta(idx, nothing, nothing, get(d, :partial_json, ""))]
+    end
+    NO_TOOL_DELTAS
+end
+
+function extract_tool_deltas(::ResponseSchema, chunk::AbstractStreamChunk)
+    isnothing(chunk.json) && return NO_TOOL_DELTAS
+    t = get(chunk.json, :type, nothing)
+    idx = get(chunk.json, :output_index, 0)
+    if t == "response.output_item.added"
+        item = get(chunk.json, :item, Dict())
+        get(item, :type, nothing) == "function_call" &&
+            return [_tool_delta(idx, get(item, :call_id, get(item, :id, nothing)), get(item, :name, nothing), "")]
+    elseif t == "response.function_call_arguments.delta"
+        return [_tool_delta(idx, nothing, nothing, get(chunk.json, :delta, ""))]
+    end
+    NO_TOOL_DELTAS
+end
+
 # Extract stop sequence - dispatch on schema
 extract_stop_sequence_from_chunk(::AbstractRequestSchema, chunk::AbstractStreamChunk) = nothing
 
@@ -269,6 +319,10 @@ function callback(cb::HttpStreamHooks, chunk::StreamChunk; kwargs...)
             cb.in_reasoning_mode = false
         end
         isa(formatted, AbstractString) && print(cb.out, formatted)
+    end
+
+    for d in extract_tool_deltas(cb.schema, chunk)
+        cb.on_tool_delta(d.index, d.id, d.name, d.args)
     end
 
     # Store stop sequence if present

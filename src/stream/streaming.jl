@@ -18,6 +18,7 @@ is_done(s::ChatCompletionAnthropicSchema, chunk::AbstractStreamChunk; kw...) = i
 is_start(s::ChatCompletionAnthropicSchema, chunk::AbstractStreamChunk; kw...) = is_start(_ccs, chunk; kw...)
 extract_content(s::ChatCompletionAnthropicSchema, chunk::AbstractStreamChunk; kw...) = extract_content(_ccs, chunk; kw...)
 extract_reasoning_from_chunk(s::ChatCompletionAnthropicSchema, chunk::AbstractStreamChunk) = extract_reasoning_from_chunk(_ccs, chunk)
+extract_tool_deltas(s::ChatCompletionAnthropicSchema, chunk::AbstractStreamChunk) = extract_tool_deltas(_ccs, chunk)
 build_response_body(s::ChatCompletionAnthropicSchema, cb::AbstractLLMStream; kw...) = build_response_body(_ccs, cb; kw...)
 extract_stop_sequence_from_chunk(s::ChatCompletionAnthropicSchema, chunk::AbstractStreamChunk) = extract_stop_sequence_from_chunk(_ccs, chunk)
 extract_model_from_chunk(s::ChatCompletionAnthropicSchema, chunk::StreamChunk) = extract_model_from_chunk(_ccs, chunk)

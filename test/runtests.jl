@@ -420,4 +420,5 @@ using Aqua
     include("test_meta_model_transform.jl")
     include("test_anthropic_hooks_thinking.jl")
     include("test_provenance.jl")
+    include("test_tool_deltas.jl")
 end
