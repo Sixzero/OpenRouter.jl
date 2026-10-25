@@ -126,9 +126,10 @@ using Sockets
                 @test err isa InterruptException
                 delay_ms = (returned_at - cancelled_at[]) / 1e6
                 @info "formatter cancellation timing" formatter delay_ms drained=(released_at[] != 0)
-                # Known bug, documented until the socket-abort fix lands. This
-                # becomes an ordinary @test when HTTP cleanup stops draining.
-                @test_broken released_at[] == 0
+                # Regression guard: the unfinished stream is aborted before HTTP.jl's
+                # cleanup `closeread` could drain the rest of the body.
+                @test released_at[] == 0
+                @test delay_ms < 1000
             finally
                 close(release)
                 teardown()

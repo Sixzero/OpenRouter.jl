@@ -427,6 +427,7 @@ function _open_sse_stream(cb::AbstractLLMStream, url, headers, input::String; ve
                 end
             end
         end
+        isdone = false
         try
         write(stream, input)
         HTTP.closewrite(stream)
@@ -455,7 +456,6 @@ function _open_sse_stream(cb::AbstractLLMStream, url, headers, input::String; ve
                 """
         end
 
-        isdone = false
         spillover = ""
         while !isdone
             # `eof(stream)` BLOCKS until at least one byte arrives (or EOF), so the
@@ -488,6 +488,17 @@ function _open_sse_stream(cb::AbstractLLMStream, url, headers, input::String; ve
         # mid-response — surface it instead of treating the partial reply as success.
         isdone || error("stream ended unexpectedly: EOF before done marker")
         finally
+            # Leaving without the done marker (callback threw on cancel, API error
+            # mid-stream, ...): kill the socket NOW. Otherwise HTTP.jl's cleanup
+            # `closeread` drains the rest of the body to keep the connection
+            # reusable — i.e. a Stop waits for the model to finish its answer
+            # (incident 2026-10-22: ~100 s in STOPPING). The watcher alone can't
+            # help here: the throw happens inside the callback, before its next tick.
+            isdone || try
+                _abort_read!(stream)
+            catch e
+                @debug "failed to abort unfinished stream" exception=(e, catch_backtrace())
+            end
             watcher === nothing || close(watcher)
         end
     end
