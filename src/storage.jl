@@ -17,6 +17,7 @@ end
 
 # Global cache variable
 const GLOBAL_CACHE = Ref{Union{ModelCache, Nothing}}(nothing)
+const SAVE_CACHE_LOCK = ReentrantLock()
 
 # Global aliases - mapping short forms to provider:model format
 # IMPORTANT: Keep these pointing to the LATEST best model for each provider. UPDATE when new models release!
@@ -215,14 +216,23 @@ function save_cache(cache::ModelCache)
         ),
         "last_full_refresh" => string(cache.last_full_refresh)
     )
-    # Atomic write: write to a temp file then rename, so an interrupted write
-    # (e.g. SIGINT mid-serialization) can never leave a truncated models.json.
-    tmp_file = cache_file * ".tmp"
-    open(tmp_file, "w") do f
-        JSON3.pretty(f, cache_data)
+    # Atomic write: unique temp file + rename(2), so neither an interrupted write
+    # (SIGINT mid-serialization) nor two concurrent writers can leave models.json
+    # truncated or missing. A shared ".tmp" + mv(force=true) did exactly that under
+    # concurrency: mv rm's the destination first, the loser's rename finds no tmp,
+    # falls back to cp → ENOENT, and the cache never got saved again (2026-10-27).
+    lock(SAVE_CACHE_LOCK) do
+        tmp_file = string(cache_file, ".tmp.", getpid(), ".", Threads.threadid(), ".", rand(UInt32))
+        try
+            open(tmp_file, "w") do f
+                JSON3.pretty(f, cache_data)
+            end
+            Base.Filesystem.rename(tmp_file, cache_file)
+        finally
+            ispath(tmp_file) && rm(tmp_file; force = true)
+        end
+        GLOBAL_CACHE[] = cache
     end
-    mv(tmp_file, cache_file; force = true)
-    GLOBAL_CACHE[] = cache
 end
 
 function load_cache()::ModelCache
