@@ -178,7 +178,7 @@ const SUPERSEDED_MODELS = Set([
     # check, so the native API is the only reliable discriminator.
     "openai/gpt-5.6-luna-pro", "openai/gpt-5.6-sol-pro", "openai/gpt-5.6-terra-pro",
     "openai/gpt-6-astra-pro", "openai/gpt-6-sol-pro", "openai/gpt-6-luna-pro",
-    "openai/gpt-6.1-sol-pro",
+    "openai/gpt-6.1-sol-pro", "openai/gpt-6.1-terra-pro",
     # gemini: keep only text-chat flagships — 4-argon + 3.7/3.8-flash.
     # Drop 2.5-pro / 3.1-pro-preview (superseded by 4-argon) and all
     # image/lite/customtools/older flash/pro variants.
