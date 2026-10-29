@@ -374,17 +374,17 @@ end
 """
 Alias slug => (catalog provider it is billed as, price multiplier).
 - `vertex`: same Gemini API as `google-ai-studio` (no catalog endpoint of its own).
-- `openai_eu`: OpenAI EU data residency, +10% regional uplift.
-- `azure`: Azure OpenAI EU Data Zone deployments, +10% vs Global.
-- `anthropic_eu`: Claude on Bedrock EU regional endpoint, +10% regional uplift.
-- `vertex_eu`: Claude on Vertex AI EU multi-region, +10% regional uplift.
+- `openai_eu`: OpenAI EU data residency, +20% regional uplift.
+- `azure`: Azure OpenAI EU Data Zone deployments, +20% vs Global.
+- `anthropic_eu`: Claude on Bedrock EU regional endpoint, +20% regional uplift.
+- `vertex_eu`: Claude on Vertex AI EU multi-region, +20% regional uplift.
 """
 const PRICED_AS = Dict{String,Tuple{String,Float64}}(
     "vertex"    => ("google-ai-studio", 1.0),
-    "openai_eu" => ("openai", 1.1),
-    "azure"     => ("openai", 1.1),
-    "anthropic_eu" => ("anthropic", 1.1),
-    "vertex_eu" => ("anthropic", 1.1),
+    "openai_eu" => ("openai", 1.2),
+    "azure"     => ("openai", 1.2),
+    "anthropic_eu" => ("anthropic", 1.2),
+    "vertex_eu" => ("anthropic", 1.2),
 )
 
 scale_pricing(::Nothing, ::Float64) = nothing

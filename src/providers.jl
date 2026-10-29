@@ -63,7 +63,7 @@ const PROVIDER_INFO = Dict{String,ProviderInfo}(
         "OpenAI Responses API (gpt-5+, o-series)"),
     # OpenAI EU data residency (processed/stored in EEA). Same key: a Global-project
     # key works on the eu host. Needs ZDR/MAM approval on the OpenAI org.
-    # Billed as `openai` +10% (OpenAI's data-residency uplift), see PRICED_AS.
+    # Billed as `openai` +20% (OpenAI's data-residency uplift), see PRICED_AS.
     # Not in the catalog export: pricier, reachable only via explicit `openai_eu:`.
     "openai_eu" => ProviderInfo(
         "https://eu.api.openai.com/v1",
@@ -196,7 +196,7 @@ const PROVIDER_INFO = Dict{String,ProviderInfo}(
         "Uses Anthropic's native API format"),
     # Claude on Amazon Bedrock, EU: bedrock-runtime's Anthropic Messages API path with
     # an `eu.` cross-region inference profile (routes only within EU regions).
-    # Bedrock API key in x-api-key. +10% vs global (see PRICED_AS).
+    # Bedrock API key in x-api-key. +20% vs global (see PRICED_AS).
     # (bedrock-mantle lists no Anthropic models for new accounts, so not used.)
     "anthropic_eu" => ProviderInfo(
         "https://bedrock-runtime.eu-central-1.amazonaws.com/anthropic",
@@ -208,7 +208,7 @@ const PROVIDER_INFO = Dict{String,ProviderInfo}(
         "Claude on Amazon Bedrock, EU inference profile (EU data residency), Messages API"),
     # Claude on Google Vertex AI, EU multi-region (processing stays in the EU).
     # No API keys on Vertex: GOOGLE_APPLICATION_CREDENTIALS = service-account (or gcloud ADC)
-    # JSON content or path, exchanged for a cached OAuth token. +10% vs global (see PRICED_AS).
+    # JSON content or path, exchanged for a cached OAuth token. +20% vs global (see PRICED_AS).
     "vertex_eu" => ProviderInfo(
         "https://aiplatform.eu.rep.googleapis.com/v1/projects/<gcp_project>/locations/eu/publishers/anthropic/models",
         "google-oauth",
@@ -373,7 +373,7 @@ const PROVIDER_INFO = Dict{String,ProviderInfo}(
     # Host = our own resource (AZURE_OPENAI_HOST = resource name). Region is the
     # resource + deployment type; we only create Data Zone (EU) deployments, so this
     # slug is EU-resident. `model` = deployment name: name deployments after the
-    # OpenAI model id (e.g. `gpt-6.1-sol`). Billed as `openai` +10% (Data Zone
+    # OpenAI model id (e.g. `gpt-6.1-sol`). Billed as `openai` +20% (Data Zone
     # uplift vs Global), see PRICED_AS. Excluded from the catalog export.
     "azure" => ProviderInfo(
         "https://<resource>.openai.azure.com/openai/v1",

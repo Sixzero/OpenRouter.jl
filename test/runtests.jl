@@ -42,18 +42,18 @@ using Aqua
         @test model_id == "gemini-4-argon"
     end
 
-    @testset "openai_eu: EU host, openai pricing +10%" begin
+    @testset "openai_eu: EU host, openai pricing +20%" begin
         info, model_id, ep = OpenRouter.parse_provider_model("openai_eu:openai/gpt-6.1-sol")
         _, _, base = OpenRouter.parse_provider_model("openai:openai/gpt-6.1-sol")
         @test info.base_url == "https://eu.api.openai.com/v1"
         @test info.api_key_env_var == "OPENAI_API_KEY"
         @test info.schema isa OpenRouter.ResponseSchema
         @test model_id == "gpt-6.1-sol"
-        @test parse(Float64, ep.pricing.prompt) ≈ 1.1 * parse(Float64, base.pricing.prompt)
-        @test parse(Float64, ep.pricing.completion) ≈ 1.1 * parse(Float64, base.pricing.completion)
+        @test parse(Float64, ep.pricing.prompt) ≈ 1.2 * parse(Float64, base.pricing.prompt)
+        @test parse(Float64, ep.pricing.completion) ≈ 1.2 * parse(Float64, base.pricing.completion)
     end
 
-    @testset "azure: v1 Responses API on our resource, openai pricing +10%" begin
+    @testset "azure: v1 Responses API on our resource, openai pricing +20%" begin
         withenv("AZURE_OPENAI_HOST" => "tfa-eu") do
             info, model_id, ep = OpenRouter.parse_provider_model("azure:openai/gpt-6.1-sol")
             _, _, base = OpenRouter.parse_provider_model("openai:openai/gpt-6.1-sol")
@@ -61,11 +61,11 @@ using Aqua
             @test info.schema isa OpenRouter.ResponseSchema
             @test model_id == "gpt-6.1-sol"
             @test ep.provider_name == "azure"
-            @test parse(Float64, ep.pricing.prompt) ≈ 1.1 * parse(Float64, base.pricing.prompt)
+            @test parse(Float64, ep.pricing.prompt) ≈ 1.2 * parse(Float64, base.pricing.prompt)
         end
     end
 
-    @testset "anthropic_eu: Bedrock EU inference profile, anthropic pricing +10%" begin
+    @testset "anthropic_eu: Bedrock EU inference profile, anthropic pricing +20%" begin
         @test OpenRouter.bedrock_eu_model_transform("anthropic/claude-haiku-5.5") == "eu.anthropic.claude-haiku-5-5"
         @test OpenRouter.bedrock_eu_model_transform("anthropic/claude-haiku-4.5") == "eu.anthropic.claude-haiku-4-5-20251001-v1:0"
         info, model_id, ep = OpenRouter.parse_provider_model("anthropic_eu:anthropic/claude-haiku-4.5")
@@ -73,7 +73,7 @@ using Aqua
         @test info.base_url == "https://bedrock-runtime.eu-central-1.amazonaws.com/anthropic"
         @test info.schema isa OpenRouter.AnthropicSchema
         @test model_id == "eu.anthropic.claude-haiku-4-5-20251001-v1:0"
-        @test parse(Float64, ep.pricing.prompt) ≈ 1.1 * parse(Float64, base.pricing.prompt)
+        @test parse(Float64, ep.pricing.prompt) ≈ 1.2 * parse(Float64, base.pricing.prompt)
         @test info.auth_header_format == "x-api-key"
         @test info.default_headers["anthropic-version"] == "2023-06-01"
         _, sfx_id, _ = OpenRouter.parse_provider_model("anthropic_eu:anthropic/claude-haiku-4.5(high)")
@@ -90,14 +90,14 @@ using Aqua
         @test !OpenRouter.is_openrouter_gateway(OpenRouter.get_provider_info("openai"))
     end
 
-    @testset "vertex_eu: Vertex EU multi-region rawPredict, anthropic pricing +10%" begin
+    @testset "vertex_eu: Vertex EU multi-region rawPredict, anthropic pricing +20%" begin
         @test OpenRouter.vertex_model_transform("anthropic/claude-haiku-4.5") == "claude-haiku-4-5"
         @test OpenRouter.vertex_model_transform("anthropic/claude-opus-4.8") == "claude-opus-4-8"
         withenv("GOOGLE_CLOUD_PROJECT" => "proj-x") do
             info, model_id, ep = OpenRouter.parse_provider_model("vertex_eu:anthropic/claude-haiku-4.5(high)")
             _, _, base = OpenRouter.parse_provider_model("anthropic:anthropic/claude-haiku-4.5")
             @test model_id == "claude-haiku-4-5"  # suffix dropped
-            @test parse(Float64, ep.pricing.prompt) ≈ 1.1 * parse(Float64, base.pricing.prompt)
+            @test parse(Float64, ep.pricing.prompt) ≈ 1.2 * parse(Float64, base.pricing.prompt)
             root = OpenRouter.resolve_base_url(info.base_url)
             @test OpenRouter.build_url(info.schema, root, model_id) ==
                   "https://aiplatform.eu.rep.googleapis.com/v1/projects/proj-x/locations/eu/publishers/anthropic/models/claude-haiku-4-5:rawPredict"
