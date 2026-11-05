@@ -306,6 +306,12 @@ using Aqua
         kw = with_default_max_tokens(AnthropicSchema(), ep, pairs((; max_tokens=10)))
         @test Dict(kw)[:max_tokens] == 10
 
+        # Catalog above the cap (Opus/Fable 128k) → capped at 64000, like Claude Code.
+        ep.max_completion_tokens = 128000
+        kw = with_default_max_tokens(AnthropicSchema(), ep, pairs((;)))
+        @test Dict(kw)[:max_tokens] == 64000
+        ep.max_completion_tokens = 64000
+
         # Unknown catalog value → untouched (schema fallback applies).
         ep2 = create_stub_endpoint("anthropic", "claude-x")
         kw = with_default_max_tokens(AnthropicSchema(), ep2, pairs((;)))

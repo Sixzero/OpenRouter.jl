@@ -146,14 +146,20 @@ function aigen(; prompt, model, kwargs...)
 end
 
 """
+Default `max_tokens` cap for Anthropic, matching Claude Code (64000, measured on the
+wire 2026-11-04). With adaptive thinking this budget covers thinking + answer.
+"""
+const ANTHROPIC_DEFAULT_MAX_TOKENS = 64000
+
+"""
 Anthropic requires `max_tokens`; when the caller didn't set one, default to the
-model's catalog max output instead of the conservative schema fallback (4096).
-Other schemas are left untouched (their APIs default to the model max already).
+model's catalog max output capped at `ANTHROPIC_DEFAULT_MAX_TOKENS` instead of the
+conservative schema fallback (4096). Other schemas are left untouched.
 """
 function with_default_max_tokens(schema::AbstractRequestSchema, endpoint::ProviderEndpoint, kwargs)
     if schema isa AnthropicSchema && !haskey(kwargs, :max_tokens) &&
        endpoint.max_completion_tokens !== nothing
-        return pairs((; kwargs..., max_tokens = endpoint.max_completion_tokens))
+        return pairs((; kwargs..., max_tokens = min(endpoint.max_completion_tokens, ANTHROPIC_DEFAULT_MAX_TOKENS)))
     end
     return kwargs
 end
