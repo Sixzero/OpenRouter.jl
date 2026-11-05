@@ -32,6 +32,17 @@ using OpenRouter: AIMessage, AnthropicSchema, ChatCompletionSchema, GeminiSchema
         @test_throws ModelRefusalError AIMessage(GeminiSchema(), result)
     end
 
+    @testset "OpenAI HTTP 400 cyber flag" begin
+        body = """{"error":{"message":"This content was flagged for possible cybersecurity risk. If this seems wrong, try rephrasing your request.","type":"invalid_request_error","code":null}}"""
+        e = OpenRouter.refusal_from_http_error(400, body, """{"model":"gpt-6.1-sol","stream":true}""")
+        @test e isa ModelRefusalError
+        @test e.model == "gpt-6.1-sol"
+        @test e.category == "cyber"
+        @test OpenRouter.refusal_from_http_error(400, """{"error":{"code":"content_filter"}}""", "{}") isa ModelRefusalError
+        @test OpenRouter.refusal_from_http_error(400, """{"error":{"message":"context length exceeded"}}""", "{}") === nothing
+        @test OpenRouter.refusal_from_http_error(429, body, "{}") === nothing
+    end
+
     @testset "Normal responses are unaffected" begin
         ok = AIMessage(ChatCompletionSchema(), Dict("model" => "gpt-x", "usage" => Dict(),
             "choices" => [Dict("finish_reason" => "stop", "message" => Dict("content" => "hi"))]))

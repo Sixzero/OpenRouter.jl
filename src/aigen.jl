@@ -228,6 +228,8 @@ function _aigen_core(prompt, provider_info::ProviderInfo, model_id::AbstractStri
         
         if response.status != 200
             log_request_failure(response.status, body)
+            refusal = refusal_from_http_error(response.status, String(copy(response.body)), body)
+            refusal === nothing || throw(refusal)
             error("API request failed with status $(response.status): $(String(response.body))")
         end
         
@@ -432,6 +434,23 @@ Base.showerror(io::IO, e::ModelRefusalError) = print(io,
     e.category === nothing ? "" : " (flagged as: $(e.category))",
     ". It judged the prompt to conflict with its safety policy, so nothing was generated. ",
     "Rephrase the request, or switch to a different model.")
+
+"""
+    refusal_from_http_error(status, body, request) -> Union{ModelRefusalError,Nothing}
+
+Some providers refuse with an HTTP error instead of a refusal finish reason: OpenAI
+answers 400 "This content was flagged for possible cybersecurity risk…" (or
+`code: content_filter`). Same meaning as an Anthropic `stop_reason: refusal`, so it
+gets the same type — callers (retry loops, refusal fallback) must see one error.
+"""
+function refusal_from_http_error(status::Integer, body::AbstractString, request::AbstractString)
+    status == 400 || return nothing
+    m = match(r"flagged for possible (\w+) risk"i, body)
+    m === nothing && !occursin(r"\"code\"\s*:\s*\"content_filter\""i, body) && return nothing
+    category = m === nothing ? nothing : (lowercase(m[1]) == "cybersecurity" ? "cyber" : lowercase(m[1]))
+    model = match(r"\"model\"\s*:\s*\"([^\"]+)\"", request)
+    ModelRefusalError(model === nothing ? "the model" : model[1], category)
+end
 
 # Anthropic `refusal`, OpenAI `content_filter`, Gemini `SAFETY`/`PROHIBITED_CONTENT`.
 const REFUSAL_FINISH_REASONS = Set(["refusal", "content_filter", "safety", "prohibited_content"])

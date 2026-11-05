@@ -362,6 +362,8 @@ function throw_stream_http_error(response, stream, input::AbstractString; timeou
     body = decode_response_body(raw, response.headers)
     report = request_size_report(input)
     log_request_failure(response.status, input; report)
+    refusal = refusal_from_http_error(response.status, body, input)
+    refusal === nothing || throw(refusal)
     msg = "API Error ($(response.status)): $(stream_error_message(body))"
     _is_size_error(response.status, body) && (msg *= " [request $report]")
     throw(HTTP.RequestError(response, msg))
