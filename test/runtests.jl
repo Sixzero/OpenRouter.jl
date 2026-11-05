@@ -88,6 +88,14 @@ using Aqua
         @test OpenRouter.is_openrouter_gateway(info)
         @test OpenRouter.is_openrouter_gateway(OpenRouter.get_provider_info("openrouter"))
         @test !OpenRouter.is_openrouter_gateway(OpenRouter.get_provider_info("openai"))
+        # Billed at the author's catalog price +20%; `(high)` → reasoning_effort; ZDR enforced.
+        info, mid, ep = OpenRouter.parse_provider_model("openrouter_eu:anthropic/claude-haiku-4.5(high)")
+        _, _, base = OpenRouter.parse_provider_model("anthropic:anthropic/claude-haiku-4.5")
+        @test parse(Float64, ep.pricing.prompt) ≈ 1.2 * parse(Float64, base.pricing.prompt)
+        id, kw = OpenRouter.with_thinking_suffix(info, mid, pairs((;)))
+        @test id == "anthropic/claude-haiku-4.5" && kw[:reasoning_effort] == "high"
+        @test OpenRouter.deny_data_collection!(Dict{String,Any}(); zdr=true)["provider"] == Dict("data_collection" => "deny", "zdr" => true)
+        @test !haskey(OpenRouter.deny_data_collection!(Dict{String,Any}())["provider"], "zdr")
     end
 
     @testset "vertex_eu: Vertex EU multi-region rawPredict, anthropic pricing +20%" begin

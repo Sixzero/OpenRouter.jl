@@ -202,7 +202,8 @@ function _aigen_core(prompt, provider_info::ProviderInfo, model_id::AbstractStri
     kwargs = with_default_max_tokens(protocolSchema, provider_endpoint, kwargs)
     model_id, kwargs = with_thinking_suffix(provider_info, model_id, kwargs)
     payload = build_payload(protocolSchema, prompt, model_id, sys_msg, stream_flag; kwargs...)
-    is_openrouter_gateway(provider_info) && deny_data_collection!(payload)
+    is_openrouter_gateway(provider_info) &&
+        deny_data_collection!(payload; zdr = provider_info.base_url == OPENROUTER_EU_GATEWAY_URL)
     !isnothing(verbose) && !!verbose && @show payload
     
     # Build headers
@@ -265,6 +266,18 @@ function find_provider_endpoint(cached_model::CachedModel, provider::AbstractStr
     return nothing
 end
 
+"""
+Billing price for `openrouter_eu`: the model author's own catalog endpoint (anthropic, openai, …;
+else the first listed) +20%, the same EU uplift as `PRICED_AS`. Unpriced would bill \$0.
+"""
+function eu_gateway_pricing(model_id::AbstractString, endpoint_fetcher)
+    cached = get_model(model_id; fetch_endpoints=true, endpoint_fetcher)
+    eps = cached === nothing || cached.endpoints === nothing ? nothing : cached.endpoints.endpoints
+    (eps === nothing || isempty(eps)) && throw(ArgumentError("No priced catalog endpoint for openrouter_eu:$model_id"))
+    ep = something(find_provider_endpoint(cached, first(split(model_id, "/"))), first(eps))
+    return scale_pricing(ep.pricing, 1.2)
+end
+
 # Parse "Provider:author/model_id" into (ProviderInfo, "transformed_model_id", ProviderEndpoint)
 function parse_provider_model(provider_model::AbstractString; endpoint_fetcher=list_endpoints)
     parts = split(provider_model, ":", limit=2)
@@ -298,7 +311,8 @@ function parse_provider_model(provider_model::AbstractString; endpoint_fetcher=l
     # OpenRouter handles upstream provider routing itself.
     if is_openrouter_gateway(provider_info)
         transformed_model_id = transform_model_name(provider_info, lookup_model_id) * model_suffix
-        return provider_info, transformed_model_id, create_stub_endpoint(provider_name, lookup_model_id)
+        pricing = lc_name == "openrouter_eu" ? eu_gateway_pricing(lookup_model_id, endpoint_fetcher) : nothing
+        return provider_info, transformed_model_id, create_stub_endpoint(provider_name, lookup_model_id; pricing)
     end
 
     # Ollama has no directly addressable OpenRouter metadata; its export performs

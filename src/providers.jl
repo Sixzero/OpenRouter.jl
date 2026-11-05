@@ -32,22 +32,27 @@ is_openrouter_gateway(info) = info.base_url in (OPENROUTER_GATEWAY_URL, OPENROUT
 Route only to OpenRouter upstreams that don't train on inputs. Request-level, so it holds
 even if the account's "Enable providers that may train on inputs" setting is flipped back.
 """
-function deny_data_collection!(payload::AbstractDict)
+function deny_data_collection!(payload::AbstractDict; zdr::Bool=false)
     prov = get!(() -> Dict{String,Any}(), payload, "provider")
-    prov isa AbstractDict && (prov["data_collection"] = "deny")
+    prov isa AbstractDict || return payload
+    prov["data_collection"] = "deny"
+    zdr && (prov["zdr"] = true)  # zero-data-retention endpoints only
     payload
 end
 
 # Build an OpenRouter-gateway ProviderInfo. `crucible` etc. are OpenRouter-only upstreams
 # exposed as their own provider slug; the full model id (incl. `:free`) is passed through.
-openrouter_gateway(notes::String, url::String=OPENROUTER_GATEWAY_URL, env::String="OPENROUTER_API_KEY") = ProviderInfo(
+openrouter_gateway(notes::String, url::String=OPENROUTER_GATEWAY_URL, env::String="OPENROUTER_API_KEY";
+                   thinking_suffix::Symbol=:passthrough) = ProviderInfo(
     url, "Bearer", env,
-    Dict{String,String}(), nothing, ChatCompletionSchema(), notes)
+    Dict{String,String}(), nothing, ChatCompletionSchema(), notes, thinking_suffix)
 
 const PROVIDER_INFO = Dict{String,ProviderInfo}(
     # OpenRouter gateway providers: OpenAI-compatible, model id passed through as author/model[:variant].
     "openrouter" => openrouter_gateway("OpenRouter gateway"),
-    "openrouter_eu" => openrouter_gateway("OpenRouter EU in-region routing (Business-plan org key)", OPENROUTER_EU_GATEWAY_URL, "OPENROUTER_EU_API_KEY"),
+    # `(high)` becomes `reasoning_effort` (OpenRouter rejects suffixed ids); ZDR + catalog price +20% (see parse_provider_model).
+    "openrouter_eu" => openrouter_gateway("OpenRouter EU in-region routing (Business-plan org key)", OPENROUTER_EU_GATEWAY_URL, "OPENROUTER_EU_API_KEY";
+                                          thinking_suffix=:reasoning_effort),
     "crucible"   => openrouter_gateway("OpenRouter-only upstream (Crucible); routed via openrouter.ai"),
     "stealth"    => openrouter_gateway("OpenRouter cloaked/stealth upstream; routed via openrouter.ai"),
     "poolside"   => openrouter_gateway("Poolside (laguna) upstream; routed via openrouter.ai"),
