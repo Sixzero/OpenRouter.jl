@@ -18,8 +18,8 @@ include(joinpath(@__DIR__, "..", "scripts", "export_models_json.jl"))
     @test endpoint.pricing !== nothing
 
     # Gemini ids ride the Gemini-native protocol; everything else stays chat/completions.
-    @test OpenRouter.get_provider_schema(info, "gemini-4-argon-contributor") isa GeminiSchema
-    @test OpenRouter.opencode_go_model_transform("google/gemini-4-argon") == "gemini-4-argon-contributor"
+    @test OpenRouter.get_provider_schema(info, "gemini-4-argon") isa GeminiSchema
+    @test OpenRouter.opencode_go_model_transform("google/gemini-4-argon") == "gemini-4-argon"
     @test OpenRouter.get_provider_schema(info, "kimi-k3") isa ChatCompletionSchema
 
     payload = OpenRouter.build_payload(ChatCompletionSchema(), "hi", "kimi-k3", nothing; top_p=0.9)
