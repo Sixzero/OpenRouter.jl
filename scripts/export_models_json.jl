@@ -198,6 +198,7 @@ const SUPERSEDED_MODELS = Set([
     # `-contributor` twins are shipped too (~15x cheaper, Meta trains on data;
     # the frontend badges them as "trains").
     "inclusionai/ling-3.0-flash",  # superseded by ling-3.1-flash
+    "inclusionai/ling-3.0-tiny",  # not worth shipping
     "meta/muse-spark-1.1", "meta/muse-spark-1.2", "meta/muse-spark-1.2-contributor",
     "meta/muse-glimmer-30b",
     # dropped: weak/off-catalog
