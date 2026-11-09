@@ -1,5 +1,7 @@
 #!/usr/bin/env julia
 
+# New-model checklist (CLIProxyAPI UA bump, packages aliases, deploy): docs/new_model_checklist.md
+
 using OpenRouter
 using JSON3
 using Dates
