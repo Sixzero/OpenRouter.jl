@@ -189,6 +189,7 @@ const SUPERSEDED_MODELS = Set([
     "google/gemini-3.1-flash-lite-image", "google/gemini-3-pro-image",
     "google/gemini-3.5-flash", "google/gemini-3.5-flash-lite", "google/gemini-3.6-flash",
     "google/gemini-nano-banana-2.1",  # image-gen
+    "google/gemini-omni-1.1-flash", "google/gemini-omni-1.2-flash",  # text+video gen, not chat
     # anthropic: all opus "-fast" are phantom (404 on the native API — "fast" is
     # an OpenRouter routing tier, not a real model id). Anthropic is the only
     # host, so listing them here drops them entirely.
@@ -203,6 +204,7 @@ const SUPERSEDED_MODELS = Set([
     "ibm-granite/granite-4.1-8b", "ibm-granite/granite-4.2-8b",   # weak 8b
     "nvidia/nemotron-3.5-content-safety",  # moderation classifier, not chat
     "google/lyria-3-clip-preview", "google/lyria-3-pro-preview",  # music-gen, not chat
+    "ricursiveai/ripple-65b-preview", "particle-ai/particle-1",  # unneeded
 ])
 
 # Niche models we still ship but hide from the main list: the frontend renders
