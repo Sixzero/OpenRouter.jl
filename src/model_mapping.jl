@@ -147,7 +147,7 @@ Transform OpenRouter ids to native Meta Model API ids by stripping the `meta/`
 prefix (e.g. "meta/muse-spark-1.3" -> "muse-spark-1.3"). Where OpenRouter drops
 the version suffix the native API requires, `META_NATIVE_IDS` maps it back.
 """
-const META_NATIVE_IDS = Dict("muse-wonder" => "muse-wonder-1.0")
+const META_NATIVE_IDS = Dict("muse-wonder" => "muse-wonder-1.0", "muse-ember" => "muse-ember-1.0")
 
 function meta_model_transform(model_id::AbstractString)::AbstractString
     id = startswith(lowercase(model_id), "meta/") ? model_id[(length("meta/")+1):end] : model_id
