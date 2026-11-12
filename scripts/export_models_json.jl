@@ -143,6 +143,12 @@ const KEEP_OLD_MODELS = Set([
 # they aren't worth shipping (weak family, non-chat, off-catalog junk).
 const SUPERSEDED_MODELS = Set([
     "anthropic/claude-sonnet-4.6",
+    # not worth shipping: KT-hosted Korean models, Upstage Solar, Unbiased Pareto preview
+    "kt/midm-k-3.0-pro", "motif-technologies/motif-3", "upstage/solar-pro4",
+    "unbiased/pareto-26.10-preview",
+    # TEMPORARY: Google's fetchAvailableModels returns gemini-4-carbon-disabled for our
+    # antigravity accounts, so the proxy can't route it. Remove once it lists -high.
+    "google/gemini-4-carbon",
     # qwen: keep 3.6+ only
     "qwen/qwen3.5-122b-a10b", "qwen/qwen3.5-27b", "qwen/qwen3.5-35b-a3b",
     "qwen/qwen3.5-397b-a17b", "qwen/qwen3.5-9b", "qwen/qwen3-coder-next",
