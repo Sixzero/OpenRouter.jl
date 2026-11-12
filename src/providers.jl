@@ -40,6 +40,32 @@ function deny_data_collection!(payload::AbstractDict; zdr::Bool=false)
     payload
 end
 
+"""
+Zero-data-retention scope. Inside `with(ZDR_ONLY => Ref(true))` every `aigen`/`aigen_raw` call,
+whatever its model, goes to `openrouter_eu:` (EU in-region upstreams, `zdr` + `data_collection: deny`).
+A Ref so a run can tighten it at a turn boundary (`require_zdr!`); tasks spawned inside inherit it.
+"""
+const ZDR_ONLY = ScopedValue{Union{Nothing,Base.RefValue{Bool}}}(nothing)
+zdr_only() = (r = ZDR_ONLY[]; r !== nothing && r[])
+"Sticky: once a run has handled ZDR-only data it stays ZDR-only. No-op outside a `ZDR_ONLY` scope."
+require_zdr!(on::Bool=true) = (r = ZDR_ONLY[]; r !== nothing && on && (r[] = true); nothing)
+
+"Models with no EU in-region ZDR endpoint (checked 2026-11-12) → the closest one that has."
+const ZDR_EU_SUBSTITUTE = Dict(
+    "openai/gpt-6-astra" => "openai/gpt-6.1-sol",
+    "google/gemini-3.8-flash" => "anthropic/claude-haiku-5.5",
+)
+
+"""`provider:author/model` → `openrouter_eu:author/model` while `zdr_only()`; throws when there is no such id."""
+function zdr_route(model::AbstractString)
+    zdr_only() || return model
+    provider, id = occursin(':', model) ? split(model, ':'; limit=2) : ("", model)
+    (lowercase(provider) == "openrouter_eu" || startswith(lowercase(provider), "echo")) && return model
+    occursin('/', id) || throw(ArgumentError("No zero-data-retention route for model $model"))
+    base, effort = something(match(r"^([^(]*)(.*)$", id)).captures
+    return "openrouter_eu:" * get(ZDR_EU_SUBSTITUTE, base, base) * effort
+end
+
 # Build an OpenRouter-gateway ProviderInfo. `crucible` etc. are OpenRouter-only upstreams
 # exposed as their own provider slug; the full model id (incl. `:free`) is passed through.
 openrouter_gateway(notes::String, url::String=OPENROUTER_GATEWAY_URL, env::String="OPENROUTER_API_KEY";

@@ -1,6 +1,7 @@
 module OpenRouter
 
 using Base64: base64decode
+using Base.ScopedValues: ScopedValue, with
 import CodecZlib
 
 include("types.jl")
@@ -32,6 +33,7 @@ include("precompile.jl")
 export list_models, list_models_raw, list_providers, list_providers_raw
 export get_model, list_cached_models, search_models, update_db
 export aigen, aigen_raw
+export ZDR_ONLY, zdr_only, require_zdr!
 export calculate_cost, COST_DISCOUNT_FN
 export list_provider_endpoints
 export list_native_models, list_endpoints

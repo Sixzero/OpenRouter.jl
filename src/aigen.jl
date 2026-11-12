@@ -35,6 +35,8 @@ function aigen_raw(prompt, provider_model::String;
     
     # Resolve alias to full provider:model format
     resolved_model = resolve_model_alias(provider_model)
+    zdr_model = zdr_route(resolved_model)
+    zdr_model == resolved_model || (resolved_model = zdr_model; api_key = nothing; schema = nothing)  # key/schema belonged to the old provider
 
     provider_info, model_id, provider_endpoint = parse_provider_model(resolved_model)
     
