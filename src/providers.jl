@@ -60,7 +60,7 @@ const ZDR_EU_SUBSTITUTE = Dict(
 function zdr_route(model::AbstractString)
     zdr_only() || return model
     provider, id = occursin(':', model) ? split(model, ':'; limit=2) : ("", model)
-    (lowercase(provider) == "openrouter_eu" || startswith(lowercase(provider), "echo")) && return model
+    startswith(lowercase(provider), "echo") && return model
     occursin('/', id) || throw(ArgumentError("No zero-data-retention route for model $model"))
     base, effort = something(match(r"^([^(]*)(.*)$", id)).captures
     return "openrouter_eu:" * get(ZDR_EU_SUBSTITUTE, base, base) * effort
