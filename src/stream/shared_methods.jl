@@ -365,6 +365,9 @@ function throw_stream_http_error(response, stream, input::AbstractString; timeou
     refusal = refusal_from_http_error(response.status, body, input)
     refusal === nothing || throw(refusal)
     msg = "API Error ($(response.status)): $(stream_error_message(body))"
+    # eu.openrouter.ai (ZDR account) on a model with no EU zero-data-retention endpoint.
+    occursin("supporting your data region", body) &&
+        (msg = "This model has no EU zero-data-retention endpoint, and your account runs only on those. Pick another model (e.g. Claude or GPT).")
     _is_size_error(response.status, body) && (msg *= " [request $report]")
     throw(HTTP.RequestError(response, msg))
 end

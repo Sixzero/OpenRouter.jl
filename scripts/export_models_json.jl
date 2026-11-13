@@ -731,6 +731,25 @@ function build_models_data()
     )
 end
 
+# ---------- EU ZDR list ----------
+
+# Models a ZDR account can run (every call goes to eu.openrouter.ai): the model picker and the
+# backend dispatch gate read this list (@shared/fbe providerPolicy hasEuZdrEndpoint).
+const EU_ZDR_OUT = get(ENV, "EU_ZDR_MODELS_OUTPUT",
+    joinpath(homedir(), "repo/todoforai/packages/shared-fbe/src/eu_zdr_models.json"))
+
+function export_eu_zdr_models(out_file=EU_ZDR_OUT)
+    url = OpenRouter.OPENROUTER_EU_GATEWAY_URL * "/endpoints/zdr"
+    data = JSON3.read(OpenRouter.HTTP.get(url).body).data
+    models = sort(unique(String[e.model_id for e in data]))
+    isempty(models) && error("empty EU ZDR list from $url, keeping $out_file")
+    open(out_file * ".tmp", "w") do io
+        JSON3.pretty(io, Dict("source" => url, "models" => models))
+    end
+    mv(out_file * ".tmp", out_file; force=true)
+    println("✅ Exported $(length(models)) EU ZDR models to $out_file")
+end
+
 # ---------- Main ----------
 
 function main()
@@ -752,6 +771,7 @@ function main()
         JSON3.pretty(io, data)
     end
     mv(tmp_file, out_file; force=true)
+    export_eu_zdr_models()
 
     total_models = data["total_models"]
     println("✅ Exported $total_models models to $out_file")

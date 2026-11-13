@@ -50,10 +50,13 @@ zdr_only() = (r = ZDR_ONLY[]; r !== nothing && r[])
 "Sticky: once a run has handled ZDR-only data it stays ZDR-only. No-op outside a `ZDR_ONLY` scope."
 require_zdr!(on::Bool=true) = (r = ZDR_ONLY[]; r !== nothing && on && (r[] = true); nothing)
 
-"Models with no EU in-region ZDR endpoint (checked 2026-11-12) → the closest one that has."
+"""Our internal models (diff apply, review, RAG) with no EU in-region ZDR endpoint (checked
+2026-11-13) → the closest one that has. A user's own pick is never swapped: the backend refuses
+it before the run (TaskService.applyZdrAccount)."""
 const ZDR_EU_SUBSTITUTE = Dict(
     "openai/gpt-6-astra" => "openai/gpt-6.1-sol",
     "google/gemini-3.8-flash" => "anthropic/claude-haiku-5.5",
+    "google/gemini-3.6-flash" => "anthropic/claude-haiku-5.5",  # `gemf`: ModifyFileTool / diff apply
 )
 
 """`provider:author/model` → `openrouter_eu:author/model` while `zdr_only()`; throws when there is no such id."""
