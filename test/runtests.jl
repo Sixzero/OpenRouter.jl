@@ -42,18 +42,18 @@ using Aqua
         @test model_id == "gemini-4-argon"
     end
 
-    @testset "openai_eu: EU host, openai pricing +20%" begin
+    @testset "openai_eu: EU host, openai pricing × EU_PRICE_FACTOR" begin
         info, model_id, ep = OpenRouter.parse_provider_model("openai_eu:openai/gpt-6.1-sol")
         _, _, base = OpenRouter.parse_provider_model("openai:openai/gpt-6.1-sol")
         @test info.base_url == "https://eu.api.openai.com/v1"
         @test info.api_key_env_var == "OPENAI_API_KEY"
         @test info.schema isa OpenRouter.ResponseSchema
         @test model_id == "gpt-6.1-sol"
-        @test parse(Float64, ep.pricing.prompt) ≈ 1.2 * parse(Float64, base.pricing.prompt)
-        @test parse(Float64, ep.pricing.completion) ≈ 1.2 * parse(Float64, base.pricing.completion)
+        @test parse(Float64, ep.pricing.prompt) ≈ OpenRouter.EU_PRICE_FACTOR * parse(Float64, base.pricing.prompt)
+        @test parse(Float64, ep.pricing.completion) ≈ OpenRouter.EU_PRICE_FACTOR * parse(Float64, base.pricing.completion)
     end
 
-    @testset "azure: v1 Responses API on our resource, openai pricing +20%" begin
+    @testset "azure: v1 Responses API on our resource, openai pricing × EU_PRICE_FACTOR" begin
         withenv("AZURE_OPENAI_HOST" => "tfa-eu") do
             info, model_id, ep = OpenRouter.parse_provider_model("azure:openai/gpt-6.1-sol")
             _, _, base = OpenRouter.parse_provider_model("openai:openai/gpt-6.1-sol")
@@ -61,11 +61,11 @@ using Aqua
             @test info.schema isa OpenRouter.ResponseSchema
             @test model_id == "gpt-6.1-sol"
             @test ep.provider_name == "azure"
-            @test parse(Float64, ep.pricing.prompt) ≈ 1.2 * parse(Float64, base.pricing.prompt)
+            @test parse(Float64, ep.pricing.prompt) ≈ OpenRouter.EU_PRICE_FACTOR * parse(Float64, base.pricing.prompt)
         end
     end
 
-    @testset "anthropic_eu: Bedrock EU inference profile, anthropic pricing +20%" begin
+    @testset "anthropic_eu: Bedrock EU inference profile, anthropic pricing × EU_PRICE_FACTOR" begin
         @test OpenRouter.bedrock_eu_model_transform("anthropic/claude-haiku-5.5") == "eu.anthropic.claude-haiku-5-5"
         @test OpenRouter.bedrock_eu_model_transform("anthropic/claude-haiku-4.5") == "eu.anthropic.claude-haiku-4-5-20251001-v1:0"
         info, model_id, ep = OpenRouter.parse_provider_model("anthropic_eu:anthropic/claude-haiku-4.5")
@@ -73,7 +73,7 @@ using Aqua
         @test info.base_url == "https://bedrock-runtime.eu-central-1.amazonaws.com/anthropic"
         @test info.schema isa OpenRouter.AnthropicSchema
         @test model_id == "eu.anthropic.claude-haiku-4-5-20251001-v1:0"
-        @test parse(Float64, ep.pricing.prompt) ≈ 1.2 * parse(Float64, base.pricing.prompt)
+        @test parse(Float64, ep.pricing.prompt) ≈ OpenRouter.EU_PRICE_FACTOR * parse(Float64, base.pricing.prompt)
         @test info.auth_header_format == "x-api-key"
         @test info.default_headers["anthropic-version"] == "2023-06-01"
         _, sfx_id, _ = OpenRouter.parse_provider_model("anthropic_eu:anthropic/claude-haiku-4.5(high)")
@@ -88,24 +88,49 @@ using Aqua
         @test OpenRouter.is_openrouter_gateway(info)
         @test OpenRouter.is_openrouter_gateway(OpenRouter.get_provider_info("openrouter"))
         @test !OpenRouter.is_openrouter_gateway(OpenRouter.get_provider_info("openai"))
-        # Billed at the author's catalog price +20%; `(high)` → reasoning_effort; ZDR enforced.
+        # Billed at the author's catalog price × EU_PRICE_FACTOR; `(high)` → reasoning_effort; ZDR enforced.
         info, mid, ep = OpenRouter.parse_provider_model("openrouter_eu:anthropic/claude-haiku-4.5(high)")
         _, _, base = OpenRouter.parse_provider_model("anthropic:anthropic/claude-haiku-4.5")
-        @test parse(Float64, ep.pricing.prompt) ≈ 1.2 * parse(Float64, base.pricing.prompt)
+        @test parse(Float64, ep.pricing.prompt) ≈ OpenRouter.EU_PRICE_FACTOR * parse(Float64, base.pricing.prompt)
         id, kw = OpenRouter.with_thinking_suffix(info, mid, pairs((;)))
         @test id == "anthropic/claude-haiku-4.5" && kw[:reasoning_effort] == "high"
         @test OpenRouter.deny_data_collection!(Dict{String,Any}(); zdr=true)["provider"] == Dict("data_collection" => "deny", "zdr" => true)
         @test !haskey(OpenRouter.deny_data_collection!(Dict{String,Any}())["provider"], "zdr")
     end
 
-    @testset "vertex_eu: Vertex EU multi-region rawPredict, anthropic pricing +20%" begin
+    @testset "openrouter_eu: Claude prompt caching + cache-write billing" begin
+        @test OpenRouter.EU_PRICE_FACTOR == 1.3
+        eu, gw = OpenRouter.get_provider_info("openrouter_eu"), OpenRouter.get_provider_info("openrouter")
+        pl(info, id, cache) = OpenRouter.gateway_payload!(Dict{String,Any}(), info, id, cache)
+        @test pl(eu, "anthropic/claude-sonnet-5.5", :all)["cache_control"] == Dict("type" => "ephemeral")
+        @test pl(eu, "anthropic/claude-sonnet-5.5", :all)["provider"]["zdr"] == true
+        @test pl(gw, "anthropic/claude-sonnet-5.5", :all)["cache_control"] == Dict("type" => "ephemeral")
+        @test !haskey(pl(eu, "anthropic/claude-sonnet-5.5", nothing), "cache_control")
+        @test !haskey(pl(eu, "openai/gpt-6.1-sol", :all), "cache_control")
+        u(details) = Dict("usage" => Dict("prompt_tokens" => 6014, "completion_tokens" => 5, "total_tokens" => 6019,
+                                          "prompt_tokens_details" => details))
+        w = OpenRouter.extract_tokens(OpenRouter.ChatCompletionSchema(), u(Dict("cached_tokens" => 0, "cache_write_tokens" => 6010)))
+        @test (w.prompt_tokens, w.input_cache_write, w.input_cache_read) == (4, 6010, 0)
+        r = OpenRouter.extract_tokens(OpenRouter.ChatCompletionSchema(), u(Dict("cached_tokens" => 6010, "cache_write_tokens" => 0)))
+        @test (r.prompt_tokens, r.input_cache_write, r.input_cache_read) == (4, 0, 6010)
+        o = OpenRouter.extract_tokens(OpenRouter.ChatCompletionSchema(), u(Dict("cached_tokens" => 14)))  # OpenAI: no write field
+        @test (o.prompt_tokens, o.input_cache_write) == (6000, 0)
+        @test OpenRouter.acc_tokens(OpenRouter.ChatCompletionSchema(), OpenRouter.TokenCounts(), w).input_cache_write == 6010
+        # Cache writes cost 1.25× input, reads 0.1×, on the EU price.
+        _, _, ep = OpenRouter.parse_provider_model("openrouter_eu:anthropic/claude-haiku-4.5")
+        p = ep.pricing
+        @test OpenRouter.calculate_cost(p, w) ≈ 4 * parse(Float64, p.prompt) + 6010 * parse(Float64, p.input_cache_write) + 5 * parse(Float64, p.completion)
+        @test OpenRouter.calculate_cost(p, r) < OpenRouter.calculate_cost(p, w) / 5
+    end
+
+    @testset "vertex_eu: Vertex EU multi-region rawPredict, anthropic pricing × EU_PRICE_FACTOR" begin
         @test OpenRouter.vertex_model_transform("anthropic/claude-haiku-4.5") == "claude-haiku-4-5"
         @test OpenRouter.vertex_model_transform("anthropic/claude-opus-4.8") == "claude-opus-4-8"
         withenv("GOOGLE_CLOUD_PROJECT" => "proj-x") do
             info, model_id, ep = OpenRouter.parse_provider_model("vertex_eu:anthropic/claude-haiku-4.5(high)")
             _, _, base = OpenRouter.parse_provider_model("anthropic:anthropic/claude-haiku-4.5")
             @test model_id == "claude-haiku-4-5"  # suffix dropped
-            @test parse(Float64, ep.pricing.prompt) ≈ 1.2 * parse(Float64, base.pricing.prompt)
+            @test parse(Float64, ep.pricing.prompt) ≈ OpenRouter.EU_PRICE_FACTOR * parse(Float64, base.pricing.prompt)
             root = OpenRouter.resolve_base_url(info.base_url)
             @test OpenRouter.build_url(info.schema, root, model_id) ==
                   "https://aiplatform.eu.rep.googleapis.com/v1/projects/proj-x/locations/eu/publishers/anthropic/models/claude-haiku-4-5:rawPredict"

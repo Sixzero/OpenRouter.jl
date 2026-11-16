@@ -185,6 +185,17 @@ function with_thinking_suffix(provider_info::ProviderInfo, model_id::AbstractStr
 end
 
 """
+OpenRouter gateway extras: no training on inputs (+ ZDR on the EU host), and for Claude
+OpenRouter's automatic prompt caching (top-level `cache_control`, moving breakpoint; works on
+Anthropic, Bedrock and Vertex) since chat-completions messages carry no cache markers.
+"""
+function gateway_payload!(payload::AbstractDict, provider_info::ProviderInfo, model_id::AbstractString, cache)
+    deny_data_collection!(payload; zdr = provider_info.base_url == OPENROUTER_EU_GATEWAY_URL)
+    cache !== nothing && startswith(model_id, "anthropic/") && (payload["cache_control"] = Dict("type" => "ephemeral"))
+    payload
+end
+
+"""
 Core function that handles both streaming and non-streaming API calls.
 """
 function _aigen_core(prompt, provider_info::ProviderInfo, model_id::AbstractString, provider_endpoint::ProviderEndpoint; 
@@ -213,8 +224,7 @@ function _aigen_core(prompt, provider_info::ProviderInfo, model_id::AbstractStri
     kwargs = with_default_max_tokens(protocolSchema, provider_endpoint, kwargs)
     model_id, kwargs = with_thinking_suffix(provider_info, model_id, kwargs)
     payload = build_payload(protocolSchema, prompt, model_id, sys_msg, stream_flag; kwargs...)
-    is_openrouter_gateway(provider_info) &&
-        deny_data_collection!(payload; zdr = provider_info.base_url == OPENROUTER_EU_GATEWAY_URL)
+    is_openrouter_gateway(provider_info) && gateway_payload!(payload, provider_info, model_id, get(kwargs, :cache, nothing))
     !isnothing(verbose) && !!verbose && @show payload
     
     # Build headers
@@ -279,16 +289,20 @@ function find_provider_endpoint(cached_model::CachedModel, provider::AbstractStr
     return nothing
 end
 
+"""EU in-region price over the author's list price. Providers charge ~+10% in-region (OpenRouter EU,
+Bedrock/Vertex EU); +30% keeps a margin after top-up fees. Shown in the picker as shared-fer EU_PRICE_FACTOR."""
+const EU_PRICE_FACTOR = 1.3
+
 """
 Billing price for `openrouter_eu`: the model author's own catalog endpoint (anthropic, openai, …;
-else the first listed) +20%, the same EU uplift as `PRICED_AS`. Unpriced would bill \$0.
+else the first listed) × `EU_PRICE_FACTOR`, the same EU uplift as `PRICED_AS`. Unpriced would bill \$0.
 """
 function eu_gateway_pricing(model_id::AbstractString, endpoint_fetcher)
     cached = get_model(model_id; fetch_endpoints=true, endpoint_fetcher)
     eps = cached === nothing || cached.endpoints === nothing ? nothing : cached.endpoints.endpoints
     (eps === nothing || isempty(eps)) && throw(ArgumentError("No priced catalog endpoint for openrouter_eu:$model_id"))
     ep = something(find_provider_endpoint(cached, first(split(model_id, "/"))), first(eps))
-    return scale_pricing(ep.pricing, 1.2)
+    return scale_pricing(ep.pricing, EU_PRICE_FACTOR)
 end
 
 # Parse "Provider:author/model_id" into (ProviderInfo, "transformed_model_id", ProviderEndpoint)
@@ -401,17 +415,14 @@ end
 """
 Alias slug => (catalog provider it is billed as, price multiplier).
 - `vertex`: same Gemini API as `google-ai-studio` (no catalog endpoint of its own).
-- `openai_eu`: OpenAI EU data residency, +20% regional uplift.
-- `azure`: Azure OpenAI EU Data Zone deployments, +20% vs Global.
-- `anthropic_eu`: Claude on Bedrock EU regional endpoint, +20% regional uplift.
-- `vertex_eu`: Claude on Vertex AI EU multi-region, +20% regional uplift.
+- `openai_eu`, `azure`, `anthropic_eu` (Bedrock EU), `vertex_eu`: EU in-region, `EU_PRICE_FACTOR`.
 """
 const PRICED_AS = Dict{String,Tuple{String,Float64}}(
     "vertex"    => ("google-ai-studio", 1.0),
-    "openai_eu" => ("openai", 1.2),
-    "azure"     => ("openai", 1.2),
-    "anthropic_eu" => ("anthropic", 1.2),
-    "vertex_eu" => ("anthropic", 1.2),
+    "openai_eu" => ("openai", EU_PRICE_FACTOR),
+    "azure"     => ("openai", EU_PRICE_FACTOR),
+    "anthropic_eu" => ("anthropic", EU_PRICE_FACTOR),
+    "vertex_eu" => ("anthropic", EU_PRICE_FACTOR),
 )
 
 scale_pricing(::Nothing, ::Float64) = nothing

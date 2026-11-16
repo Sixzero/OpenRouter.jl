@@ -694,6 +694,7 @@ function extract_tokens(::ChatCompletionSchema, result::Union{Dict, JSON3.Object
     cache_hit = get(usage, "prompt_cache_hit_tokens", nothing)
     cache_miss = get(usage, "prompt_cache_miss_tokens", nothing)
     
+    input_cache_write = 0
     if cache_hit !== nothing && cache_miss !== nothing
         # DeepSeek provides explicit breakdown - use directly
         prompt_tokens = cache_miss      # non-cached input (cache misses)
@@ -701,12 +702,13 @@ function extract_tokens(::ChatCompletionSchema, result::Union{Dict, JSON3.Object
     else
         # Fallback: OpenAI style - API prompt_tokens is total, subtract cached
         api_prompt_tokens = get(usage, "prompt_tokens", 0)
-        input_cache_read = 0
+        input_cache_read = input_cache_write = 0
         prompt_details = get(usage, "prompt_tokens_details", nothing)
         if prompt_details !== nothing
-            input_cache_read = get(prompt_details, "cached_tokens", 0)
+            input_cache_read = something(get(prompt_details, "cached_tokens", 0), 0)
+            input_cache_write = something(get(prompt_details, "cache_write_tokens", 0), 0)  # OpenRouter (Claude)
         end
-        prompt_tokens = api_prompt_tokens - input_cache_read  # cache misses only
+        prompt_tokens = max(api_prompt_tokens - input_cache_read - input_cache_write, 0)  # uncached only
     end
     
     # Extract reasoning tokens from completion_tokens_details (xAI, OpenAI style)
@@ -719,7 +721,7 @@ function extract_tokens(::ChatCompletionSchema, result::Union{Dict, JSON3.Object
     # OpenAI: reasoning_tokens ⊂ completion_tokens. xAI chat completions: EXCLUSIVE
     # (completion=1, reasoning=442, total=prompt+1+442; billed as both). Detect via
     # reported total and fold in, so internal_reasoning is a subset everywhere.
-    total_input = prompt_tokens + input_cache_read
+    total_input = prompt_tokens + input_cache_read + input_cache_write
     reported_total = get(usage, "total_tokens", nothing)
     if internal_reasoning > 0 && reported_total == total_input + completion_tokens + internal_reasoning
         completion_tokens += internal_reasoning
@@ -736,6 +738,7 @@ function extract_tokens(::ChatCompletionSchema, result::Union{Dict, JSON3.Object
         completion_tokens = completion_tokens,
         total_tokens = calculated_total,
         input_cache_read = input_cache_read, # cache hits
+        input_cache_write = input_cache_write,
         internal_reasoning = internal_reasoning
     )
 end
