@@ -94,6 +94,12 @@ using Aqua
         @test parse(Float64, ep.pricing.prompt) ≈ OpenRouter.EU_PRICE_FACTOR * parse(Float64, base.pricing.prompt)
         id, kw = OpenRouter.with_thinking_suffix(info, mid, pairs((;)))
         @test id == "anthropic/claude-haiku-4.5" && kw[:reasoning_effort] == "high"
+        # Plain OpenRouter bills the author's catalog price (unpriced would bill $0).
+        _, _, gw = OpenRouter.parse_provider_model("openrouter:anthropic/claude-haiku-4.5")
+        @test gw.pricing.prompt == base.pricing.prompt && gw.pricing.completion == base.pricing.completion
+        # Author variants: the priciest one (`openai`, not `openai/flex`) — never bill under the gateway price.
+        _, _, pro = OpenRouter.parse_provider_model("openrouter:openai/gpt-5.5-pro")
+        @test pro.pricing.prompt == "0.00003"
         @test OpenRouter.deny_data_collection!(Dict{String,Any}(); zdr=true)["provider"] == Dict("data_collection" => "deny", "zdr" => true)
         @test !haskey(OpenRouter.deny_data_collection!(Dict{String,Any}())["provider"], "zdr")
     end

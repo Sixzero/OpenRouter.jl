@@ -294,15 +294,21 @@ Bedrock/Vertex EU); +30% keeps a margin after top-up fees. Shown in the picker a
 const EU_PRICE_FACTOR = 1.3
 
 """
-Billing price for `openrouter_eu`: the model author's own catalog endpoint (anthropic, openai, …;
-else the first listed) × `EU_PRICE_FACTOR`, the same EU uplift as `PRICED_AS`. Unpriced would bill \$0.
+Billing price for an OpenRouter gateway: the model author's own catalog endpoint (anthropic, openai, …;
+else any listed), its priciest variant (`openai` over `openai/flex`), else the model-level catalog price;
+× `factor` — `EU_PRICE_FACTOR` for `openrouter_eu` (same EU uplift as `PRICED_AS`), 1 for `openrouter`.
+Unpriced would bill \$0, so a model without a catalog price is rejected.
 """
-function eu_gateway_pricing(model_id::AbstractString, endpoint_fetcher)
+function gateway_pricing(provider::AbstractString, model_id::AbstractString, endpoint_fetcher; factor::Float64=1.0)
     cached = get_model(model_id; fetch_endpoints=true, endpoint_fetcher)
-    eps = cached === nothing || cached.endpoints === nothing ? nothing : cached.endpoints.endpoints
-    (eps === nothing || isempty(eps)) && throw(ArgumentError("No priced catalog endpoint for openrouter_eu:$model_id"))
-    ep = something(find_provider_endpoint(cached, first(split(model_id, "/"))), first(eps))
-    return scale_pricing(ep.pricing, EU_PRICE_FACTOR)
+    price(p, f) = p === nothing ? nothing : tryparse(Float64, something(getfield(p, f), ""))
+    priced(p) = all(f -> (v = price(p, f); v !== nothing && v >= 0), (:prompt, :completion))  # -1 = variable (router) price
+    eps = cached === nothing || cached.endpoints === nothing ? [] : filter(e -> priced(e.pricing), cached.endpoints.endpoints)
+    author = filter(e -> endpoint_matches_provider(e, first(split(model_id, "/"))), eps)
+    pricing = !isempty(eps) ? argmax(e -> price(e.pricing, :prompt) + price(e.pricing, :completion), isempty(author) ? eps : author).pricing :
+              cached !== nothing && priced(cached.model.pricing) ? cached.model.pricing :
+              throw(ArgumentError("No catalog price for $provider:$model_id"))
+    return factor == 1 ? pricing : scale_pricing(pricing, factor)
 end
 
 # Parse "Provider:author/model_id" into (ProviderInfo, "transformed_model_id", ProviderEndpoint)
@@ -338,7 +344,7 @@ function parse_provider_model(provider_model::AbstractString; endpoint_fetcher=l
     # OpenRouter handles upstream provider routing itself.
     if is_openrouter_gateway(provider_info)
         transformed_model_id = transform_model_name(provider_info, lookup_model_id) * model_suffix
-        pricing = lc_name == "openrouter_eu" ? eu_gateway_pricing(lookup_model_id, endpoint_fetcher) : nothing
+        pricing = gateway_pricing(lc_name, lookup_model_id, endpoint_fetcher; factor=lc_name == "openrouter_eu" ? EU_PRICE_FACTOR : 1.0)
         return provider_info, transformed_model_id, create_stub_endpoint(provider_name, lookup_model_id; pricing)
     end
 
