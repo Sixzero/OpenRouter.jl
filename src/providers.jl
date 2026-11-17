@@ -54,6 +54,7 @@ require_zdr!(on::Bool=true) = (r = ZDR_ONLY[]; r !== nothing && on && (r[] = tru
 2026-11-13) → the closest one that has. A user's own pick is never swapped: the backend refuses
 it before the run (TaskService.applyZdrAccount)."""
 const ZDR_EU_SUBSTITUTE = Dict(
+    "openai/gpt-6.2-astra" => "openai/gpt-6.1-sol",
     "openai/gpt-6-astra" => "openai/gpt-6.1-sol",
     "google/gemini-3.8-flash" => "anthropic/claude-haiku-5.5",
     "google/gemini-3.6-flash" => "anthropic/claude-haiku-5.5",  # `gemf`: ModifyFileTool / diff apply

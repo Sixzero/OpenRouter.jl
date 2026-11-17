@@ -177,8 +177,9 @@ const SUPERSEDED_MODELS = Set([
     "openai/gpt-audio", "openai/gpt-audio-mini", "openai/gpt-chat-latest",
     # gpt-6-sol / gpt-6-luna supersede their 5.6 namesakes
     "openai/gpt-5.6-sol", "openai/gpt-5.6-luna",
-    # gpt-6.1-sol supersedes gpt-6-sol (luna/astra have no 6.1 successor yet)
-    "openai/gpt-6-sol",
+    # gpt-6.1-sol supersedes gpt-6-sol; gpt-6.2-astra supersedes gpt-6-astra. gpt-6.1-sol
+    # stays next to 6.2-sol: it has an EU ZDR endpoint (eu_zdr_models.json), 6.2-sol not yet.
+    "openai/gpt-6-sol", "openai/gpt-6-astra",
     # Phantom OpenAI variants: the native API lists gpt-5.6-luna/sol/terra and
     # gpt-6-astra but no "-pro" sibling (only 5.5 has a -pro), and each 404s with
     # "does not exist" while the real ids merely report no credits. OpenAI is the
@@ -187,6 +188,7 @@ const SUPERSEDED_MODELS = Set([
     "openai/gpt-5.6-luna-pro", "openai/gpt-5.6-sol-pro", "openai/gpt-5.6-terra-pro",
     "openai/gpt-6-astra-pro", "openai/gpt-6-sol-pro", "openai/gpt-6-luna-pro",
     "openai/gpt-6.1-sol-pro", "openai/gpt-6.1-terra-pro",
+    "openai/gpt-6.2-sol-pro", "openai/gpt-6.2-astra-pro",
     # gemini: keep only text-chat flagships — 4-argon + 3.7/3.8-flash.
     # Drop 2.5-pro / 3.1-pro-preview (superseded by 4-argon) and all
     # image/lite/customtools/older flash/pro variants.
