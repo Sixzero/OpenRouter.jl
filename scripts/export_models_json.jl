@@ -330,6 +330,18 @@ function pick_primary_prices(endpoints::Vector{ProviderEndpoint})
 end
 
 """
+The agent can dispatch `provider:` only when OpenRouter.jl knows the provider and its
+key is deployed (ENV_FILE mirrors the prod agent env). Otherwise the picker would store
+e.g. `inferencenet:moonshotai/kimi-k3` and every run dies with "Unknown provider".
+"""
+function routable(provider::AbstractString)
+    info = OpenRouter.get_provider_info(provider)
+    info === nothing && return false
+    key = info.api_key_env_var
+    key === nothing || isempty(key) || !isempty(get(ENV, key, ""))
+end
+
+"""
 Check if an endpoint should be excluded: the provider is fully dropped
 (EXCLUDED_PROVIDERS), or this specific model is dropped on this provider
 (EXCLUDED_PROVIDER_MODELS).
@@ -682,6 +694,10 @@ function build_models_data()
     # merge_model_specs!(specs, build_ollama_specs("ollama_cloud", specs))
     merge_model_specs!(specs, build_opencode_go_specs("opencode_go", specs))
     merge_model_specs!(specs, build_native_priced_specs(specs))
+    # Only after the merges: Go/native rows inherit prices from the full catalog.
+    for d in specs
+        filter!(e -> routable(lowercase(replace(e["provider_name"], " " => "-"))), d["endpoints"])
+    end
 
     # Append proxy-only models (cliproxyapi OAuth) missing from the catalog.
     existing_ids = Set(d["id"] for d in specs)
@@ -768,6 +784,7 @@ function main()
     end
 
     data = build_models_data()
+    data["total_models"] == 0 && error("Export produced 0 models; not overwriting $out_file")
 
     # Write atomically: a temp file in the same dir + rename, so file watchers
     # (e.g. Turbopack) never observe a half-written/empty file mid-export.
