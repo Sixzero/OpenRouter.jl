@@ -434,6 +434,9 @@ function build_payload(::GeminiSchema, prompt, model_id::AbstractString, sys_msg
             generation_config["responseJsonSchema"] = v
         elseif sk == "stop_sequences" || sk == "stopSequences"
             generation_config["stopSequences"] = v
+        elseif sk == "reasoning_effort"
+            # From a `(level)` suffix (OpenAI-style providers serving Gemini, e.g. OpenCode Go).
+            v in ("minimal", "low", "medium", "high") && (user_thinking_config["thinkingLevel"] = v)
         elseif sk == "thinkingConfig"
             if v === false || v === nothing
                 user_thinking_config["__disabled__"] = true

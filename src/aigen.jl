@@ -169,7 +169,7 @@ function with_default_max_tokens(schema::AbstractRequestSchema, endpoint::Provid
     return kwargs
 end
 
-const THINKING_LEVEL_SUFFIX = r"^(.*?)\((none|minimal|low|medium|high|xhigh)\)$"
+const THINKING_LEVEL_SUFFIX = r"^(.*?)\((none|minimal|low|medium|high|xhigh|max)\)$"
 
 """
 Providers with `thinking_suffix == :reasoning_effort` get `model(level)` split into a bare

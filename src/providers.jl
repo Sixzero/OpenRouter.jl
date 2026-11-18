@@ -202,7 +202,9 @@ const PROVIDER_INFO = Dict{String,ProviderInfo}(
         Dict{String,String}("x-opencode-session" => "<session_id>"),
         opencode_go_model_transform,
         ChatCompletionSchema(),
-        "OpenCode Go subscription; OpenAI-compatible API with bare model IDs"),
+        # Go 400s "Model gpt-6-luna(max) isn't included" on suffixed ids; it takes `reasoning_effort`.
+        "OpenCode Go subscription; OpenAI-compatible API with bare model IDs",
+        :reasoning_effort),
     "minimax" => ProviderInfo(
         "https://api.minimaxi.chat/v1",
         "Bearer",

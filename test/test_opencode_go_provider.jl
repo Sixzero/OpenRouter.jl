@@ -64,3 +64,14 @@ end
         @test ("x-opencode-session" => "openrouterjl") in OpenRouter.build_headers(info, "k")
     end
 end
+
+@testset "opencode_go thinking suffix → reasoning_effort" begin
+    info = get_provider_info("opencode_go")
+    _, model_id, _ = parse_provider_model("opencode_go:openai/gpt-6-luna(max)")
+    id, kw = OpenRouter.with_thinking_suffix(info, model_id, pairs((;)))
+    @test id == "gpt-6-luna"
+    @test kw[:reasoning_effort] == "max"
+    p = OpenRouter.build_payload(OpenRouter.GeminiSchema(), "hi", "gemini-4-argon", nothing; reasoning_effort="high")
+    @test !haskey(p, "reasoning_effort")
+    @test p["generationConfig"]["thinkingConfig"]["thinkingLevel"] == "high"
+end
