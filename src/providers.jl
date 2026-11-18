@@ -79,8 +79,9 @@ openrouter_gateway(notes::String, url::String=OPENROUTER_GATEWAY_URL, env::Strin
 
 const PROVIDER_INFO = Dict{String,ProviderInfo}(
     # OpenRouter gateway providers: OpenAI-compatible, model id passed through as author/model[:variant].
-    "openrouter" => openrouter_gateway("OpenRouter gateway"),
-    # `(high)` becomes `reasoning_effort` (OpenRouter rejects suffixed ids); ZDR + catalog price × EU_PRICE_FACTOR (see parse_provider_model).
+    # `(high)` becomes `reasoning_effort` (OpenRouter rejects suffixed ids).
+    "openrouter" => openrouter_gateway("OpenRouter gateway"; thinking_suffix=:reasoning_effort),
+    # Same suffix handling; ZDR + catalog price × EU_PRICE_FACTOR (see parse_provider_model).
     "openrouter_eu" => openrouter_gateway("OpenRouter EU in-region routing (Business-plan org key)", OPENROUTER_EU_GATEWAY_URL, "OPENROUTER_EU_API_KEY";
                                           thinking_suffix=:reasoning_effort),
     "crucible"   => openrouter_gateway("OpenRouter-only upstream (Crucible); routed via openrouter.ai"),
