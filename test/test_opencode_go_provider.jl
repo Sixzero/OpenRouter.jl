@@ -27,7 +27,8 @@ include(joinpath(@__DIR__, "..", "scripts", "export_models_json.jl"))
 end
 
 @testset "OpenCode Go export" begin
-    @test OPENCODE_GO_EXCLUDED_MODELS == Set(["gpt-5.6-luna", "grok-4.5", "grok-4.6", "claude-haiku-5-5", "gemini-4-argon-contributor"])
+    @test opencode_go_excluded("gpt-6-luna") && opencode_go_excluded("grok-4.7") && opencode_go_excluded("gemini-4-argon")
+    @test !opencode_go_excluded("kimi-k3")
 
     catalog = Any[
         Dict("id" => "moonshotai/kimi-k3", "name" => "MoonshotAI: Kimi K3", "endpoints" => Any[Dict(
@@ -42,6 +43,7 @@ end
         ids = Set(spec["id"] for spec in specs)
         @test "moonshotai/kimi-k3" in ids
         @test "openai/gpt-5.6-luna" ∉ ids
+        @test !any(id -> startswith(id, "openai/") || startswith(id, "anthropic/") || startswith(id, "x-ai/") || startswith(id, "google/"), ids)
         @test "x-ai/grok-4.5" ∉ ids
         @test "x-ai/grok-4.6" ∉ ids
         kimi = only(filter(spec -> spec["id"] == "moonshotai/kimi-k3", specs))

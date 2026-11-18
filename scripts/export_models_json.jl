@@ -542,9 +542,12 @@ end
 
 # ---------- OpenCode Go subscription catalog ----------
 
-# Haiku always goes direct (anthropic / cliproxy), never through OpenCode Go.
-# The trains-on-data Argon twin stays out; plain `gemini-4-argon` (no training, 0-day retention) is exported.
+# Models our own subscriptions serve (Codex, Claude, Grok via CLIProxyAPI; Argon via
+# Antigravity) never get an OpenCode Go endpoint: Go is expensive, the subscriptions are
+# already paid. Prefix rules so a new release (gpt-7-luna, grok-5) is excluded without an edit.
+const OPENCODE_GO_EXCLUDED_PREFIXES = ("gpt-", "claude-", "grok-", "gemini-")
 const OPENCODE_GO_EXCLUDED_MODELS = Set(["gpt-5.6-luna", "grok-4.5", "grok-4.6", "claude-haiku-5-5", "gemini-4-argon-contributor"])
+opencode_go_excluded(id::AbstractString) = id in OPENCODE_GO_EXCLUDED_MODELS || any(p -> startswith(id, p), OPENCODE_GO_EXCLUDED_PREFIXES)
 
 """
 Build namespaced model specs for OpenCode Go. Pricing and context are inherited
@@ -577,7 +580,7 @@ function build_opencode_go_specs(provider_slug::AbstractString, catalog_specs::V
     for m in raw
         model_id = String(get(m, "id", ""))
         isempty(model_id) && continue
-        model_id in OPENCODE_GO_EXCLUDED_MODELS && continue
+        opencode_go_excluded(model_id) && continue
 
         match_id = find_catalog_match(model_id, catalog_ids)
         if match_id === nothing
