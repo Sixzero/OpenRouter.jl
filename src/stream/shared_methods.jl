@@ -284,10 +284,12 @@ record_response_provenance!(::AbstractLLMStream, url, response) = nothing
 """
     handle_error_message(chunk::AbstractStreamChunk; kwargs...)
 
-Handle error messages from streaming response. Always throws on error.
+Handle error messages from streaming response. Always throws on error: a
+[`ModelRefusalError`](@ref) for policy blocks, otherwise a plain error.
+`request` (the request JSON) only names the model in a refusal.
 """
-@inline function handle_error_message(chunk::AbstractStreamChunk; kwargs...)
-    if chunk.event == :error ||
+@inline function handle_error_message(chunk::AbstractStreamChunk; request::AbstractString="", kwargs...)
+    if chunk.event in (:error, Symbol("response.failed")) ||
        (isnothing(chunk.event) && !isnothing(chunk.json) && haskey(chunk.json, :error))
         
         has_error_dict = !isnothing(chunk.json) && get(chunk.json, :error, nothing) isa AbstractDict
@@ -298,6 +300,9 @@ Handle error messages from streaming response. Always throws on error.
             string(chunk.data)
         end
         
+        # A policy block sent as an in-stream error (after HTTP 200) is still a refusal.
+        refusal = refusal_from_error_text(string(chunk.data), request)
+        refusal === nothing || throw(refusal)
         error("Error detected in streaming response: $(error_str)")
     end
     return nothing
@@ -400,6 +405,9 @@ function _open_sse_stream(cb::AbstractLLMStream, url, headers, input::String; ve
     # Closing the socket on idle makes HTTP cleanup throw an EOFError that masks
     # the StreamIdleTimeoutError; `idle_fired` lets us re-surface it.
     idle_fired = Ref(false)
+    # Same masking for a refusal thrown mid-stream: the abort in `finally` makes
+    # HTTP.jl's cleanup throw EOFError over it, so keep it and re-surface it below.
+    refusal = Ref{Union{Nothing,ModelRefusalError}}(nothing)
     # Two-phase timeout policy. Phase 1 (until the first data chunk): one ABSOLUTE
     # deadline of `first_chunk_timeout` seconds covering response headers + first
     # body bytes — each guarded call gets only the REMAINING time, so a byte-silent
@@ -480,7 +488,7 @@ function _open_sse_stream(cb::AbstractLLMStream, url, headers, input::String; ve
             chunks, spillover = extract_chunks(cb.schema, masterchunk; verbose, spillover, cb.kwargs...)
             for chunk in chunks
                 verbose && @debug "Chunk Data: $(chunk.data)"
-                handle_error_message(chunk; verbose, cb.kwargs...)          # always throws on error
+                handle_error_message(chunk; request=input)
                 is_done(cb.schema, chunk; verbose, cb.kwargs...) && (isdone = true)
                 callback(cb, chunk; verbose, cb.kwargs...)
                 push!(cb, chunk)
@@ -492,6 +500,9 @@ function _open_sse_stream(cb::AbstractLLMStream, url, headers, input::String; ve
         # response.completed). EOF before that marker means the connection died
         # mid-response — surface it instead of treating the partial reply as success.
         isdone || error("stream ended unexpectedly: EOF before done marker")
+        catch e
+            e isa ModelRefusalError && (refusal[] = e)
+            rethrow()
         finally
             # Leaving without the done marker (callback threw on cancel, API error
             # mid-stream, ...): kill the socket NOW. Otherwise HTTP.jl's cleanup
@@ -513,6 +524,9 @@ function _open_sse_stream(cb::AbstractLLMStream, url, headers, input::String; ve
         # is the caller's cooperative-cancel signal (see check_cancel!).
         cancel_flag !== nothing && cancel_flag[] && throw(InterruptException())
         idle_fired[] && !(e isa StreamIdleTimeoutError) && throw(StreamIdleTimeoutError(reported_timeout()))
+        # Callers dispatch on ModelRefusalError (refusal fallback, no retry): surface it
+        # unwrapped, even if HTTP.open's cleanup masked it.
+        refusal[] === nothing || throw(refusal[])
         rethrow()
     end
 end

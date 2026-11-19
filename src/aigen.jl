@@ -239,12 +239,18 @@ function _aigen_core(prompt, provider_info::ProviderInfo, model_id::AbstractStri
         # Non-streaming request
         body = JSON3.write(payload)
         @debug "LLM request" model=model_id size=request_size_report(body)
-        response = HTTP.post(url, headers, body)
+        response = try
+            HTTP.post(url, headers, body)
+        catch e
+            if e isa HTTP.StatusError && e.status == 400
+                refusal = refusal_from_http_error(e.status, String(copy(e.response.body)), body)
+                refusal === nothing || throw(refusal)
+            end
+            rethrow()
+        end
         
         if response.status != 200
             log_request_failure(response.status, body)
-            refusal = refusal_from_http_error(response.status, String(copy(response.body)), body)
-            refusal === nothing || throw(refusal)
             error("API request failed with status $(response.status): $(String(response.body))")
         end
         
@@ -457,22 +463,59 @@ Base.showerror(io::IO, e::ModelRefusalError) = print(io,
     ". It judged the prompt to conflict with its safety policy, so nothing was generated. ",
     "Rephrase the request, or switch to a different model.")
 
-"""
-    refusal_from_http_error(status, body, request) -> Union{ModelRefusalError,Nothing}
+const REFUSAL_CODES = Dict(
+    "content_filter" => nothing, "content_policy_violation" => nothing,
+    "image_content_policy_violation" => nothing, "cyber_policy" => "cyber",
+    "cyber_policy_violation" => "cyber", "bio_policy" => "bio",
+    "misalignment_policy_violation" => "misalignment",
+)
 
-Some providers refuse with an HTTP error instead of a refusal finish reason: OpenAI
-answers 400 "This content was flagged for possible cybersecurity risk…" (or
-`code: content_filter`). Same meaning as an Anthropic `stop_reason: refusal`, so it
-gets the same type — callers (retry loops, refusal fallback) must see one error.
-"""
-function refusal_from_http_error(status::Integer, body::AbstractString, request::AbstractString)
-    status == 400 || return nothing
-    m = match(r"flagged for possible (\w+) risk"i, body)
-    m === nothing && !occursin(r"\"code\"\s*:\s*\"content_filter\""i, body) && return nothing
-    category = m === nothing ? nothing : (lowercase(m[1]) == "cybersecurity" ? "cyber" : lowercase(m[1]))
+# Match provider error fields, not arbitrary text echoed elsewhere in the body.
+function refusal_from_error_text(text::AbstractString, request::AbstractString)
+    raw = strip(text)
+    envelope = if startswith(raw, "{")
+        try
+            JSON3.read(raw, Dict{String,Any})
+        catch e
+            e isa ArgumentError || rethrow()
+            return nothing
+        end
+    else
+        raw
+    end
+    err = envelope
+    if envelope isa AbstractDict
+        response = get(envelope, "response", nothing)
+        nested = response isa AbstractDict ? get(response, "error", envelope) : envelope
+        err = get(envelope, "error", nested)
+    end
+    code = err isa AbstractDict ? get(err, "code", nothing) : nothing
+    message = err isa AbstractDict ? get(err, "message", "") : err
+    message = message isa AbstractString ? lowercase(strip(message)) : ""
+    category = if haskey(REFUSAL_CODES, code)
+        REFUSAL_CODES[code]
+    elseif (m = match(r"^claude refusal(?: \(([\w-]+)\))?(?::|$)", message)) !== nothing
+        m[1]
+    elseif startswith(message, "this content was flagged for possible biological risk")
+        "bio"
+    elseif startswith(message, "this content was flagged for possible cybersecurity risk") ||
+           startswith(message, "this request has been flagged for possible cybersecurity risk") ||
+           (occursin("triggered restrictions on violative cyber content", message) && occursin("anthropic's usage policy", message))
+        "cyber"
+    elseif startswith(message, "this request was blocked due to a misalignment policy violation")
+        "misalignment"
+    elseif startswith(message, "invalid prompt: we've limited access to this content for safety reasons") ||
+           (startswith(message, "this request was blocked by gemini's filters.") && occursin("https://policies.google.com/terms/generative-ai/use-policy", message))
+        nothing
+    else
+        return nothing
+    end
     model = match(r"\"model\"\s*:\s*\"([^\"]+)\"", request)
     ModelRefusalError(model === nothing ? "the model" : model[1], category)
 end
+
+refusal_from_http_error(status::Integer, body::AbstractString, request::AbstractString) =
+    status == 400 ? refusal_from_error_text(body, request) : nothing
 
 # Anthropic `refusal`, OpenAI `content_filter`, Gemini `SAFETY`/`PROHIBITED_CONTENT`.
 const REFUSAL_FINISH_REASONS = Set(["refusal", "content_filter", "safety", "prohibited_content"])
