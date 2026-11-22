@@ -456,12 +456,24 @@ retry it — the same prompt refuses again, deterministically.
 struct ModelRefusalError <: Exception
     model::String
     category::Union{Nothing,String}   # e.g. "bio" (Anthropic stop_details)
+    detail::Union{Nothing,String}     # raw provider finish_reason / code / message
 end
-Base.showerror(io::IO, e::ModelRefusalError) = print(io,
-    "`$(e.model)` refused to answer this request",
-    e.category === nothing ? "" : " (flagged as: $(e.category))",
-    ". It judged the prompt to conflict with its safety policy, so nothing was generated. ",
-    "Rephrase the request, or switch to a different model.")
+ModelRefusalError(model, category) = ModelRefusalError(model, category, nothing)
+
+function Base.showerror(io::IO, e::ModelRefusalError)
+    parts = String[]
+    e.category === nothing || push!(parts, "flagged as: $(e.category)")
+    if e.detail !== nothing
+        d = rstrip(e.detail, '.')
+        if !isempty(d) && lowercase(d) != "refusal"
+            push!(parts, "provider: $d")
+        end
+    end
+    reason = isempty(parts) ? "" : " ($(join(parts, "; ")))"
+    print(io,
+        "`$(e.model)` refused to answer this request$reason. ",
+        "Provider safety filters sometimes block normal requests by mistake; rephrase or switch models.")
+end
 
 const REFUSAL_CODES = Dict(
     "content_filter" => nothing, "content_policy_violation" => nothing,
@@ -490,8 +502,9 @@ function refusal_from_error_text(text::AbstractString, request::AbstractString)
         err = get(envelope, "error", nested)
     end
     code = err isa AbstractDict ? get(err, "code", nothing) : nothing
-    message = err isa AbstractDict ? get(err, "message", "") : err
-    message = message isa AbstractString ? lowercase(strip(message)) : ""
+    raw_msg = err isa AbstractDict ? get(err, "message", "") : err
+    raw_msg = raw_msg isa AbstractString ? replace(strip(raw_msg), r"\s+" => " ") : ""
+    message = lowercase(raw_msg)
     category = if haskey(REFUSAL_CODES, code)
         REFUSAL_CODES[code]
     elseif (m = match(r"^claude refusal(?: \(([\w-]+)\))?(?::|$)", message)) !== nothing
@@ -511,7 +524,9 @@ function refusal_from_error_text(text::AbstractString, request::AbstractString)
         return nothing
     end
     model = match(r"\"model\"\s*:\s*\"([^\"]+)\"", request)
-    ModelRefusalError(model === nothing ? "the model" : model[1], category)
+    detail_raw = !isempty(raw_msg) ? raw_msg : (code isa AbstractString && !isempty(code) ? String(code) : nothing)
+    detail = detail_raw === nothing ? nothing : first(detail_raw, 200)
+    ModelRefusalError(model === nothing ? "the model" : model[1], category, detail)
 end
 
 refusal_from_http_error(status::Integer, body::AbstractString, request::AbstractString) =
@@ -534,7 +549,8 @@ function AIMessage(schema::AbstractRequestSchema, result::Dict;
     # and some schemas throw on that shape.
     if finish_reason !== nothing && lowercase(String(finish_reason)) in REFUSAL_FINISH_REASONS
         throw(ModelRefusalError(string(get(result, "model", "the model")),
-                                get(get(result, "stop_details", Dict()), "category", nothing)))
+                                get(get(result, "stop_details", Dict()), "category", nothing),
+                                string(finish_reason)))
     end
     content = something(extract_content(schema, result), "")
     tokens = extract_tokens(schema, result)

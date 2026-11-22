@@ -15,7 +15,8 @@ using OpenRouter: AIMessage, AnthropicSchema, ChatCompletionSchema, GeminiSchema
         msg = sprint(showerror, e)
         @test occursin("refused", msg)
         @test occursin("claude-fable-5", msg)
-        @test occursin("bio", msg)
+        @test occursin("flagged as: bio", msg)
+        @test !occursin("provider: refusal", msg)
         @test !occursin("Unexpected response format", msg)
     end
 
@@ -29,7 +30,11 @@ using OpenRouter: AIMessage, AnthropicSchema, ChatCompletionSchema, GeminiSchema
     @testset "Gemini SAFETY" begin
         result = Dict("model" => "gemini-x",
             "candidates" => [Dict("finishReason" => "SAFETY", "content" => Dict("parts" => []))])
-        @test_throws ModelRefusalError AIMessage(GeminiSchema(), result)
+        e = try AIMessage(GeminiSchema(), result); nothing catch err; err end
+        @test e isa ModelRefusalError && e.detail == "SAFETY"
+        msg = sprint(showerror, e)
+        @test occursin("refused to answer this request", msg)
+        @test occursin("provider: SAFETY", msg)
     end
 
     @testset "OpenAI HTTP 400 cyber flag" begin
@@ -53,10 +58,13 @@ using OpenRouter: AIMessage, AnthropicSchema, ChatCompletionSchema, GeminiSchema
         @test r("""{"error":{"code":"cyber_policy","message":"x"}}""").category == "cyber"
         @test r("""{"error":{"code":"invalid_prompt","message":"Invalid prompt: we've limited access to this content for safety reasons."}}""") isa ModelRefusalError
         @test r("""{"error":{"message":"This request was blocked due to a misalignment policy violation."}}""").category == "misalignment"
-        @test r("""{"error":{"message":"This request was blocked by Gemini's filters. https://policies.google.com/terms/generative-ai/use-policy"}}""") isa ModelRefusalError
+        eg = r("""{"error":{"message":"This request was blocked by Gemini's filters. https://policies.google.com/terms/generative-ai/use-policy"}}""")
+        @test eg isa ModelRefusalError && occursin("blocked by Gemini's filters", eg.detail)
+        @test occursin("provider: This request was blocked by Gemini's filters", sprint(showerror, eg))
         @test r("""{"error":{"code":"invalid_prompt","message":"Invalid request."}}""") === nothing
         @test r("""{"error":{"message":"Invalid field: claude refusal (cyber)","input":{"code":"bio_policy"}}}""") === nothing
-        @test r("""{"error":{"code":"image_content_policy_violation"}}""") isa ModelRefusalError
+        ei = r("""{"error":{"code":"image_content_policy_violation"}}""")
+        @test ei isa ModelRefusalError && ei.detail == "image_content_policy_violation"
     end
 
     @testset "In-stream error event" begin
@@ -103,6 +111,20 @@ using OpenRouter: AIMessage, AnthropicSchema, ChatCompletionSchema, GeminiSchema
         finally
             close(server)
         end
+    end
+
+    @testset "ModelRefusalError constructor and formatting edge cases" begin
+        # 2-arg backwards compatibility (including SubString)
+        e2 = ModelRefusalError(SubString("m-sub", 1:5), nothing)
+        @test e2.detail === nothing
+        @test !occursin("provider:", sprint(showerror, e2))
+
+        # Whitespace collapse and multibyte UTF-8 truncation
+        long_msg = "This request was blocked by Gemini's filters.\n" * "ő"^220 * " https://policies.google.com/terms/generative-ai/use-policy"
+        el = OpenRouter.refusal_from_http_error(400, """{"error":{"message":"$(replace(long_msg, "\n" => "\\n"))"}}""", "{}")
+        @test el isa ModelRefusalError
+        @test length(el.detail) == 200
+        @test !occursin('\n', el.detail)
     end
 
     @testset "Normal responses are unaffected" begin
