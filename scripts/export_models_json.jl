@@ -666,7 +666,24 @@ end
 # Models served via cliproxyapi (OAuth) that are NOT in the OpenRouter catalog,
 # so the export would otherwise drop them. Pricing is informational only
 # (billing goes through the proxy's OAuth account).
-const EXTRA_MODELS = Any[]
+# z-ai/glm-5.4: GLM Coding Plan via the proxy's `zai` provider (dispatched as `z.ai:`,
+# which setup_cli_proxy!(mutate=true) points at the proxy). Priced as GLM-5.3 until Z.ai
+# publishes API pricing. Self-retiring: once OpenRouter lists the id, the catalog row wins.
+const EXTRA_MODELS = Any[
+    Dict(
+        "id" => "z-ai/glm-5.4",
+        "name" => "Z.ai: GLM 5.4",
+        "created" => 1795392000, # 2026-11-23 release
+        "endpoints" => Any[Dict(
+            "provider_name" => "Z.AI",
+            "endpoint_name" => "Z.AI | z-ai/glm-5.4",
+            "context_length" => 1048576,
+            "max_completion_tokens" => 131072,
+            "pricing" => Dict("prompt" => 1.4e-6, "completion" => 4.4e-6, "input_cache_read" => 2.6e-7),
+            "tag" => "z-ai",
+        )],
+    ),
+]
 
 """
 Export all models + endpoints from OpenRouter into a JSON structure
