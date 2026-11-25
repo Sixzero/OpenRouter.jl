@@ -115,7 +115,7 @@ function aigen(prompt, provider_model::String;
     # Get raw response and all components
     raw = aigen_raw(prompt, provider_model; schema, api_key, sys_msg, streamcallback, verbose, kwargs...)
     
-    return AIMessage(raw.schema, raw.result; endpoint=raw.provider_endpoint, elapsed=raw.elapsed)
+    return AIMessage(raw.schema, raw.result; endpoint=raw.provider_endpoint, elapsed=raw.elapsed, model_id=raw.model_id)
 end
 
 # ModelConfig overload
@@ -536,14 +536,16 @@ refusal_from_http_error(status::Integer, body::AbstractString, request::Abstract
 const REFUSAL_FINISH_REASONS = Set(["refusal", "content_filter", "safety", "prohibited_content"])
 
 """
-    AIMessage(schema::AbstractRequestSchema, result::Dict; endpoint=nothing, elapsed=-1.0)
+    AIMessage(schema::AbstractRequestSchema, result::Dict; endpoint=nothing, elapsed=-1.0, model_id=nothing)
 
 Construct an AIMessage by extracting all fields from raw API result.
-If `endpoint` is provided, cost is calculated from token usage.
+If `endpoint` is provided, cost is calculated from token usage. `model_id` (the wire id)
+binds the replayable reasoning items to the model that produced them.
 Throws [`ModelRefusalError`](@ref) when the model declined and returned no content.
 """
 function AIMessage(schema::AbstractRequestSchema, result::Dict;
-                   endpoint::Union{Nothing,ProviderEndpoint}=nothing, elapsed::Float64=-1.0)
+                   endpoint::Union{Nothing,ProviderEndpoint}=nothing, elapsed::Float64=-1.0,
+                   model_id::Union{Nothing,AbstractString}=nothing)
     finish_reason = extract_finish_reason(schema, result)
     # Check refusal BEFORE extract_content: on a refusal there is no content block
     # and some schemas throw on that shape.
@@ -570,6 +572,8 @@ function AIMessage(schema::AbstractRequestSchema, result::Dict;
         cost = cost,
         reasoning = extract_reasoning(schema, result),
         tool_calls = tool_calls,
-        image_data = image_data
+        image_data = image_data,
+        reasoning_items = (items = extract_reasoning_items(schema, result)),
+        reasoning_model = items === nothing || model_id === nothing ? nothing : String(model_id),
     )
 end

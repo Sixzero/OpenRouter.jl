@@ -235,7 +235,7 @@ Build messages array for AnthropicSchema.
 
 Returns a tuple: (messages, system_content)
 """
-function build_messages(::AnthropicSchema, prompt, sys_msg; cache::Union{Nothing,Symbol}=nothing)
+function build_messages(::AnthropicSchema, prompt, sys_msg; cache::Union{Nothing,Symbol}=nothing, model_id=nothing)
     normalized = normalize_messages(prompt, nothing)
     # Prefer explicit sys_msg kwarg; fall back to first SystemMessage embedded in prompt.
     system_content = sys_msg
@@ -243,7 +243,7 @@ function build_messages(::AnthropicSchema, prompt, sys_msg; cache::Union{Nothing
         idx = findfirst(m -> m isa SystemMessage, normalized)
         idx === nothing || (system_content = normalized[idx].content)
     end
-    return to_anthropic_messages(normalized; cache), system_content
+    return to_anthropic_messages(normalized; cache, model_id), system_content
 end
 
 """
@@ -253,7 +253,7 @@ function build_payload(schema::AnthropicSchema, prompt, model_id::AbstractString
                        stream::Bool = false; max_tokens::Int=4096,
                        cache::Union{Nothing,Symbol}=nothing,
                        kwargs...)
-    messages, system_content = build_messages(schema, prompt, sys_msg; cache)
+    messages, system_content = build_messages(schema, prompt, sys_msg; cache, model_id)
     
     payload = Dict{String, Any}(
         "model" => model_id,
@@ -605,6 +605,28 @@ function extract_tool_calls(::GeminiSchema, result::Dict)
         end
     end
     return nothing
+end
+
+"""
+Replayable reasoning state of a response (see `AIMessage.reasoning_items`); `nothing` when
+the schema has none or the provider sent no signed/encrypted reasoning.
+"""
+extract_reasoning_items(::AbstractRequestSchema, result::Dict) = nothing
+
+# Signed `thinking` and `redacted_thinking` blocks, in order. Unsigned thinking can't be replayed.
+function extract_reasoning_items(::AnthropicSchema, result::Dict)
+    blocks = get(result, "content", nothing)
+    blocks isa AbstractVector || return nothing
+    items = Any[]
+    for b in blocks
+        t = get(b, "type", nothing)
+        if t == "thinking" && !isempty(something(get(b, "signature", nothing), ""))
+            push!(items, Dict{String,Any}("type" => "thinking", "thinking" => something(get(b, "thinking", nothing), ""), "signature" => b["signature"]))
+        elseif t == "redacted_thinking" && get(b, "data", nothing) isa AbstractString
+            push!(items, Dict{String,Any}("type" => "redacted_thinking", "data" => b["data"]))
+        end
+    end
+    isempty(items) ? nothing : items
 end
 
 function extract_reasoning(::AnthropicSchema, result::Dict)

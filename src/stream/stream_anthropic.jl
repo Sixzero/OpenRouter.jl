@@ -88,8 +88,11 @@ function build_response_body(schema::AnthropicSchema, cb::AbstractLLMStream; ver
     content_buf = IOBuffer()
     # Accumulate tool_use blocks: index => Dict with :id, :name, :input_json (string)
     tool_blocks = Dict{Int, Dict{Symbol, Any}}()
-    # Accumulate thinking blocks: index => IOBuffer of :thinking deltas
+    # Accumulate thinking blocks: index => IOBuffer of :thinking deltas (+ signature, which
+    # arrives as a signature_delta and is needed to replay the block on the next turn)
     thinking_blocks = Dict{Int, IOBuffer}()
+    signatures = Dict{Int, IOBuffer}()
+    redacted_blocks = Dict{Int, String}()
     current_block_index = -1
     current_block_type = nothing
 
@@ -137,6 +140,11 @@ function build_response_body(schema::AnthropicSchema, cb::AbstractLLMStream; ver
                 initial = get(content_block, :thinking, "")
                 !isempty(initial) && write(buf, initial)
                 thinking_blocks[current_block_index] = buf
+                sig = get(content_block, :signature, nothing)
+                sig isa AbstractString && !isempty(sig) && write(get!(IOBuffer, signatures, current_block_index), sig)
+            elseif current_block_type == "redacted_thinking"
+                data = get(content_block, :data, nothing)
+                data isa AbstractString && (redacted_blocks[current_block_index] = data)
             end
         end
 
@@ -157,6 +165,9 @@ function build_response_body(schema::AnthropicSchema, cb::AbstractLLMStream; ver
                 if !isnothing(t) && haskey(thinking_blocks, current_block_index)
                     write(thinking_blocks[current_block_index], t)
                 end
+            elseif delta_type == "signature_delta"
+                sig = get(delta, :signature, nothing)
+                sig isa AbstractString && write(get!(IOBuffer, signatures, current_block_index), sig)
             end
         end
     end
@@ -167,8 +178,14 @@ function build_response_body(schema::AnthropicSchema, cb::AbstractLLMStream; ver
         # Build content array with thinking, text, and tool_use blocks (preserve order: thinking first)
         content = Any[]
 
-        for idx in sort(collect(keys(thinking_blocks)))
-            push!(content, Dict(:type => "thinking", :thinking => String(take!(thinking_blocks[idx]))))
+        for idx in sort!(collect(union(keys(thinking_blocks), keys(redacted_blocks))))
+            if haskey(redacted_blocks, idx)
+                push!(content, Dict(:type => "redacted_thinking", :data => redacted_blocks[idx]))
+            else
+                blk = Dict{Symbol,Any}(:type => "thinking", :thinking => String(take!(thinking_blocks[idx])))
+                haskey(signatures, idx) && (blk[:signature] = String(take!(signatures[idx])))
+                push!(content, blk)
+            end
         end
 
         text_content = String(take!(content_buf))

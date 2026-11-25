@@ -26,6 +26,23 @@ Base.@kwdef struct AIMessage <: AbstractMessage
     reasoning::Union{Nothing, String} = nothing  # Store reasoning/thinking content
     tool_calls::Union{Nothing, Vector{Dict{String, Any}}} = nothing  # Store tool calls
     extras::Union{Nothing, Dict{Symbol, Any}} = nothing
+    # Opaque provider reasoning state, replayed verbatim so the model keeps its own chain of
+    # thought across turns instead of re-deriving it: Anthropic `thinking` (+signature) /
+    # `redacted_thinking` blocks, Responses API `reasoning` items (`encrypted_content`).
+    # Bound to `reasoning_model` (the wire model id that produced them): other models reject
+    # or can't read them, so they only get the readable `reasoning` text, if anything.
+    reasoning_items::Union{Nothing, Vector{Any}} = nothing
+    reasoning_model::Union{Nothing, String} = nothing
+end
+
+"Model id without a trailing thinking-level suffix: `claude-opus-4-6(xhigh)` → `claude-opus-4-6`."
+reasoning_model_key(id::AbstractString) = replace(String(id), r"\([^()]*\)$" => "")
+
+"`m`'s provider reasoning items if they may be replayed to `model_id` (the model that produced them), else `nothing`."
+function replay_reasoning_items(m::AIMessage, model_id)
+    items, src = m.reasoning_items, m.reasoning_model
+    (items === nothing || isempty(items) || src === nothing || model_id === nothing) && return nothing
+    reasoning_model_key(src) == reasoning_model_key(model_id) ? items : nothing
 end
 
 Base.@kwdef struct SystemMessage <: AbstractMessage
@@ -277,7 +294,7 @@ to_anthropic_content(x) = isa(x, AbstractString) ? Any[Dict{String, Any}("type" 
 # Anthropic requires tool IDs to match ^[a-zA-Z0-9_-]+$ — sanitize IDs from other providers
 sanitize_anthropic_tool_id(id::AbstractString) = replace(id, r"[^a-zA-Z0-9_-]" => "_")
 
-function to_anthropic_messages(msgs::Vector{AbstractMessage}; cache::Union{Nothing,Symbol}=nothing)
+function to_anthropic_messages(msgs::Vector{AbstractMessage}; cache::Union{Nothing,Symbol}=nothing, model_id=nothing)
     out = Any[]
     for m in msgs
         if m isa SystemMessage
@@ -394,6 +411,19 @@ function to_anthropic_messages(msgs::Vector{AbstractMessage}; cache::Union{Nothi
                     "name" => fn["name"],
                     "input" => args
                 ))
+            end
+        end
+
+        # Signed thinking goes back first and verbatim (same model only): the model resumes its
+        # reasoning, and a tool-use turn with thinking enabled requires it.
+        if m isa AIMessage && (items = replay_reasoning_items(m, model_id)) !== nothing
+            anth_items = Any[Dict{String,Any}(String(k) => v for (k, v) in pairs(b)) for b in items
+                             if get(b, "type", "") in ("thinking", "redacted_thinking")]
+            if !isempty(anth_items)
+                filter!(b -> !(b isa Dict && get(b, "type", "") == "text" && isempty(get(b, "text", ""))), content)
+                content = vcat(anth_items, content)
+                all(b -> get(b, "type", "") in ("thinking", "redacted_thinking"), content) &&
+                    push!(content, Dict{String,Any}("type" => "text", "text" => "(empty)"))
             end
         end
 

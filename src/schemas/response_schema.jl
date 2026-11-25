@@ -36,7 +36,7 @@ function build_payload(schema::ResponseSchema, prompt, model_id::AbstractString,
     # Build input items (all methods return Vector for uniform flattening)
     input_items = Any[]
     for msg in input_msgs
-        append!(input_items, message_to_response_input(msg))
+        append!(input_items, msg isa AIMessage ? message_to_response_input(msg; model_id) : message_to_response_input(msg))
     end
     payload["input"] = input_items
     
@@ -48,12 +48,16 @@ function build_payload(schema::ResponseSchema, prompt, model_id::AbstractString,
     # Default reasoning config, merge user's reasoning if provided
     default_reasoning = Dict("summary" => "detailed")
     payload["reasoning"] = isnothing(reasoning) ? default_reasoning : merge(default_reasoning, reasoning)
+    # Encrypted reasoning comes back on each `reasoning` item and is replayed on the next
+    # turn (stateless: works with store=false/ZDR, compaction, forks, provider switches).
+    payload["include"] = Any["reasoning.encrypted_content"]
     
     # Forward supported parameters (convert tools if present)
     for (k, v) in kwargs
         if k in (:temperature, :top_p, :max_output_tokens, :tool_choice, 
                  :parallel_tool_calls, :metadata, :text, :truncation,
-                 :service_tier, :safety_identifier, :prompt_cache_key, :prompt_cache_retention)
+                 :service_tier, :safety_identifier, :prompt_cache_key, :prompt_cache_retention,
+                 :store, :include)
             payload[string(k)] = v
         elseif k == :tools
             payload["tools"] = convert_tools(ResponseSchema(), v)
@@ -80,8 +84,15 @@ function message_to_response_input(msg::UserMessage)
     [Dict("type" => "message", "role" => "user", "content" => msg.content)]
 end
 
-function message_to_response_input(msg::AIMessage)
+function message_to_response_input(msg::AIMessage; model_id=nothing)
     items = Any[]
+    # Reasoning items precede the output they led to, as in the original response. No `id`:
+    # with store=false a referenced id is "not found"; the encrypted content is self-contained.
+    if (r = replay_reasoning_items(msg, model_id)) !== nothing
+        for it in r
+            get(it, "type", "") == "reasoning" && push!(items, it)
+        end
+    end
     !isempty(msg.content) && push!(items, Dict("type" => "message", "role" => "assistant", "content" => msg.content))
     if msg.tool_calls !== nothing
         for tc in msg.tool_calls
@@ -92,7 +103,8 @@ function message_to_response_input(msg::AIMessage)
             ))
         end
     end
-    isempty(items) && push!(items, Dict("type" => "message", "role" => "assistant", "content" => msg.content))
+    all(i -> get(i, "type", "") == "reasoning", items) &&
+        push!(items, Dict("type" => "message", "role" => "assistant", "content" => msg.content))
     return items
 end
 
@@ -118,7 +130,19 @@ message_to_response_input(msg::AbstractString) = [Dict(
     "type" => "message", "role" => "user", "content" => msg
 )]
 
-# Extract reasoning from Response API
+# `reasoning` output items that carry encrypted_content, trimmed to what replay needs.
+function extract_reasoning_items(::ResponseSchema, response::Dict)
+    items = Any[]
+    for item in get(response, "output", [])
+        get(item, "type", nothing) == "reasoning" || continue
+        enc = get(item, "encrypted_content", nothing)
+        enc isa AbstractString && !isempty(enc) || continue
+        push!(items, Dict{String,Any}("type" => "reasoning", "summary" => something(get(item, "summary", nothing), Any[]), "encrypted_content" => enc))
+    end
+    isempty(items) ? nothing : items
+end
+
+# Extract reasoning from Response API (raw reasoning text, else the reasoning summaries)
 function extract_reasoning(schema::ResponseSchema, response::Dict)
     output = get(response, "output", [])
     reasoning_parts = String[]
@@ -130,6 +154,12 @@ function extract_reasoning(schema::ResponseSchema, response::Dict)
                 if get(reasoning_item, "type", nothing) == "reasoning_text"
                     text = get(reasoning_item, "text", nothing)
                     !isnothing(text) && push!(reasoning_parts, text)
+                end
+            end
+            if isempty(content)
+                for s in something(get(item, "summary", nothing), [])
+                    text = get(s, "text", nothing)
+                    text isa AbstractString && push!(reasoning_parts, text)
                 end
             end
         end
