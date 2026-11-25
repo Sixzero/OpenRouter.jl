@@ -35,6 +35,13 @@ Base.@kwdef struct AIMessage <: AbstractMessage
     reasoning_model::Union{Nothing, String} = nothing
 end
 
+"The signature Gemini put on a non-functionCall part (see `extract_reasoning_items(::GeminiSchema, …)`)."
+function _gemini_text_signature(items)
+    items === nothing && return nothing
+    i = findlast(x -> get(x, "type", "") == "thought_signature" && get(x, "part", "") == "text", items)
+    i === nothing ? nothing : items[i]["signature"]
+end
+
 "Model id without a trailing thinking-level suffix: `claude-opus-4-6(xhigh)` → `claude-opus-4-6`."
 reasoning_model_key(id::AbstractString) = replace(String(id), r"\([^()]*\)$" => "")
 
@@ -274,7 +281,9 @@ function to_openai_messages(msgs::Vector{AbstractMessage})
         # Handle AIMessage extras (tool_calls, reasoning_content)
         if m isa AIMessage
             if m.tool_calls !== nothing
-                msg_dict["tool_calls"] = m.tool_calls
+                # Wire fields only: Gemini's per-call `thoughtSignature` must not reach strict
+                # OpenAI-compatible servers (unknown keys can 400).
+                msg_dict["tool_calls"] = [Dict{String,Any}(k => v for (k, v) in tc if k != "thoughtSignature") for tc in m.tool_calls]
                 # Providers expect null content when only tool_calls are present
                 isempty(m.content) && (msg_dict["content"] = nothing)
             end
@@ -470,9 +479,25 @@ function to_anthropic_messages(msgs::Vector{AbstractMessage}; cache::Union{Nothi
 end
 
 # Gemini: we treat all as "contents" items; system_instruction is separate.
-function to_gemini_contents(msgs::Vector{AbstractMessage})
+# Google's documented sentinel for a functionCall whose signature we can't replay (another
+# model's history, a different Gemini model, pre-signature blobs): Gemini 3+ rejects an
+# unsigned functionCall in the current turn, and a foreign signature fails validation.
+const GEMINI_SKIP_SIGNATURE = "skip_thought_signature_validator"
+
+"""
+    to_gemini_contents(msgs; model_id=nothing)
+
+`model_id` binds `thoughtSignature` replay: a model turn's signatures go back only to the
+model that produced them (`AIMessage.reasoning_model`); its functionCalls otherwise carry
+[`GEMINI_SKIP_SIGNATURE`](@ref).
+"""
+function to_gemini_contents(msgs::Vector{AbstractMessage}; model_id=nothing)
     out = Any[]
-    for m in msgs
+    # functionResponse.name must equal its functionCall's name; ToolMessages often carry
+    # only the call id, so resolve the name from the calls seen so far.
+    call_names = Dict{String,String}()
+    for (k, m) in enumerate(msgs)
+        m isa AIMessage && foreach(tc -> (call_names[string(tc["id"])] = tc["function"]["name"]), something(m.tool_calls, ()))
         if m isa SystemMessage
             continue
         end
@@ -481,7 +506,8 @@ function to_gemini_contents(msgs::Vector{AbstractMessage})
         if m isa ToolMessage
             part = Dict{String,Any}(
                 "functionResponse" => Dict{String,Any}(
-                    "name" => something(m.name, m.tool_call_id),
+                    "id" => m.tool_call_id,   # pairs with functionCall.id (parallel same-name calls)
+                    "name" => something(m.name, get(call_names, m.tool_call_id, m.tool_call_id)),
                     "response" => Dict{String,Any}("content" => m.content)
                 )
             )
@@ -509,9 +535,8 @@ function to_gemini_contents(msgs::Vector{AbstractMessage})
                     end
                 end
             end
-            # Group consecutive ToolMessages into one user message
-            if !isempty(out) && out[end]["role"] == "user" &&
-               !isempty(out[end]["parts"]) && haskey(out[end]["parts"][end], "functionResponse")
+            # Group consecutive ToolMessages into one user message (attachments may sit between)
+            if k > 1 && msgs[k-1] isa ToolMessage && !isempty(out) && out[end]["role"] == "user"
                 push!(out[end]["parts"], part)
                 append!(out[end]["parts"], img_parts)
             else
@@ -553,16 +578,20 @@ function to_gemini_contents(msgs::Vector{AbstractMessage})
             end
             push!(out, Dict("role" => role, "parts" => parts))
         elseif isa(m.content, AbstractString)
-            parts = isempty(m.content) ? Any[] : Any[Dict("text" => m.content)]
-            # AIMessage with tool_calls → append functionCall parts
-            if m isa AIMessage && m.tool_calls !== nothing
-                for tc in m.tool_calls
+            parts = isempty(m.content) ? Any[] : Any[Dict{String,Any}("text" => m.content)]
+            if m isa AIMessage
+                own = replay_reasoning_items(m, model_id) !== nothing  # signatures are this model's
+                # A text-part signature (turn without a functionCall) rides on the text, if any.
+                ts = own ? _gemini_text_signature(m.reasoning_items) : nothing
+                ts !== nothing && !isempty(parts) && (parts[end]["thoughtSignature"] = ts)
+                # Gemini signs only the first of parallel calls; the sentinel stands in for a
+                # missing first signature only (on a sibling the validator rejects it).
+                for (i, tc) in enumerate(something(m.tool_calls, ()))
                     fn = tc["function"]
-                    args = get_arguments(tc)
-                    fc_part = Dict{String,Any}("functionCall" => Dict{String,Any}("name" => fn["name"], "args" => args))
-                    # Preserve thoughtSignature for Gemini 3.1+ tool roundtrips
-                    ts = get(tc, "thoughtSignature", nothing)
-                    !isnothing(ts) && (fc_part["thoughtSignature"] = ts)
+                    fc_part = Dict{String,Any}("functionCall" => Dict{String,Any}("id" => string(tc["id"]), "name" => fn["name"], "args" => get_arguments(tc)))
+                    sig = own ? get(tc, "thoughtSignature", nothing) : nothing
+                    sig === nothing && i == 1 && (sig = GEMINI_SKIP_SIGNATURE)
+                    sig === nothing || (fc_part["thoughtSignature"] = sig)
                     push!(parts, fc_part)
                 end
             end

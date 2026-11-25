@@ -1,9 +1,9 @@
 using Test, JSON3
 using OpenRouter
 using OpenRouter: AbstractMessage, UserMessage, AIMessage, ToolMessage,
-    AnthropicSchema, ResponseSchema, ChatCompletionSchema,
+    AnthropicSchema, ResponseSchema, ChatCompletionSchema, GeminiSchema,
     StreamChunk, HttpStreamHooks, build_payload, build_response_body,
-    extract_reasoning_items, extract_reasoning, to_anthropic_messages
+    extract_reasoning_items, extract_reasoning, to_anthropic_messages, to_gemini_contents
 
 @testset "Reasoning state extraction & replay" begin
     @testset "Anthropic: extract signed + redacted, drop unsigned" begin
@@ -123,4 +123,82 @@ using OpenRouter: AbstractMessage, UserMessage, AIMessage, ToolMessage,
         p_custom = build_payload(ResponseSchema(), "hi", "gpt-5.6-luna", nothing, false; store=false)
         @test p_custom["store"] === false
     end
+
+    @testset "Gemini: thoughtSignature bound to the producing model" begin
+        M = "gemini-3.8-flash-high"
+        fc_turn = Dict("candidates" => [Dict("content" => Dict("role" => "model", "parts" => [
+            Dict("text" => "plan", "thought" => true),
+            Dict("functionCall" => Dict("name" => "calc", "args" => Dict("a" => 1), "id" => "c1"), "thoughtSignature" => "SIG_FC"),
+        ]))])
+        text_turn = Dict("candidates" => [Dict("content" => Dict("role" => "model", "parts" => [
+            Dict("text" => "Answer: 3", "thoughtSignature" => "SIG_TXT"),
+        ]))])
+        a1 = AIMessage(GeminiSchema(), fc_turn; model_id=M)
+        a2 = AIMessage(GeminiSchema(), text_turn; model_id=M)
+        @test a1.reasoning_model == M && a1.tool_calls[1]["thoughtSignature"] == "SIG_FC"
+        @test [i["part"] for i in a1.reasoning_items] == ["functionCall"]
+        @test a2.reasoning_items[1]["signature"] == "SIG_TXT"
+        msgs = AbstractMessage[UserMessage(content="q"), a1, ToolMessage(content="1", tool_call_id="c1", name="calc"), a2, UserMessage(content="again")]
+        parts(model) = [c["parts"] for c in to_gemini_contents(msgs; model_id=model) if c["role"] == "model"]
+        same = parts(M)
+        @test same[1][end]["thoughtSignature"] == "SIG_FC"
+        @test same[2][end]["thoughtSignature"] == "SIG_TXT"
+        @test parts(M * "(low)")[1][end]["thoughtSignature"] == "SIG_FC"     # level suffix: same model
+        other = parts("gemini-3.1-flash-lite")
+        @test other[1][end]["thoughtSignature"] == OpenRouter.GEMINI_SKIP_SIGNATURE
+        @test !haskey(other[2][end], "thoughtSignature")
+        # Foreign/unbound history (e.g. a Claude tool call) still gets the sentinel
+        foreign = AIMessage(content="", tool_calls=[Dict{String,Any}("id" => "t1", "type" => "function", "function" => Dict("name" => "calc", "arguments" => "{}"))])
+        fp = to_gemini_contents(AbstractMessage[UserMessage(content="q"), foreign]; model_id=M)[2]["parts"]
+        @test fp[1]["thoughtSignature"] == OpenRouter.GEMINI_SKIP_SIGNATURE
+        unnamed = AbstractMessage[UserMessage(content="q"), a1, ToolMessage(content="1", tool_call_id="c1")]
+        @test to_gemini_contents(unnamed)[3]["parts"][1]["functionResponse"]["name"] == "calc"   # resolved from the call
+        @test !haskey(only(build_payload(ChatCompletionSchema(), msgs, "x/y", nothing)["messages"][2]["tool_calls"]), "thoughtSignature")
+        @test build_payload(GeminiSchema(), msgs, M, nothing)["contents"][2]["parts"][end]["thoughtSignature"] == "SIG_FC"
+    end
+
+    @testset "Gemini streaming keeps the text-part signature" begin
+        events = [
+            """{"candidates":[{"content":{"role":"model","parts":[{"text":"hmm","thought":true}]}}]}""",
+            """{"candidates":[{"content":{"role":"model","parts":[{"text":"Answer"}]}}]}""",
+            """{"candidates":[{"content":{"role":"model","parts":[{"text":"","thoughtSignature":"SIG_STREAM"}]},"finishReason":"STOP"}],"usageMetadata":{"promptTokenCount":3,"candidatesTokenCount":2}}""",
+        ]
+        cb = HttpStreamHooks(schema=GeminiSchema(), out=devnull, reasoning_formatter=_ -> nothing, content_formatter=_ -> nothing)
+        for e in events
+            c = StreamChunk(data=e, json=JSON3.read(e)); push!(cb, c); OpenRouter.callback(cb, c)
+        end
+        body = JSON3.read(JSON3.write(build_response_body(GeminiSchema(), cb)), Dict)
+        msg = AIMessage(GeminiSchema(), body; model_id="gemini-3.8-flash-high")
+        @test msg.content == "Answer"
+        @test msg.reasoning_items == Any[Dict{String,Any}("type" => "thought_signature", "signature" => "SIG_STREAM", "part" => "text")]
+    end
+
+
+    @testset "Gemini: parallel calls, ids, multi-part text, named tool_choice" begin
+        M = "gemini-3.8-flash-high"
+        par = Dict("candidates" => [Dict("content" => Dict("role" => "model", "parts" => [
+            Dict("text" => "A"), Dict("text" => "B"),
+            Dict("functionCall" => Dict("name" => "calc", "args" => Dict("a" => 1), "id" => "c1"), "thoughtSignature" => "SIG1"),
+            Dict("functionCall" => Dict("name" => "calc", "args" => Dict("a" => 2), "id" => "c2")),
+        ]))])
+        a = AIMessage(GeminiSchema(), par; model_id=M)
+        @test a.content == "AB"
+        msgs = AbstractMessage[UserMessage(content="q"), a,
+            ToolMessage(content="2", tool_call_id="c2"), ToolMessage(content="1", tool_call_id="c1")]
+        sigs(model) = [get(p, "thoughtSignature", nothing) for p in to_gemini_contents(msgs; model_id=model)[2]["parts"] if haskey(p, "functionCall")]
+        @test sigs(M) == ["SIG1", nothing]                                        # sibling stays unsigned
+        @test sigs("other") == [OpenRouter.GEMINI_SKIP_SIGNATURE, nothing]        # sentinel on the first only
+        c = to_gemini_contents(msgs; model_id=M)
+        @test [p["functionCall"]["id"] for p in c[2]["parts"] if haskey(p, "functionCall")] == ["c1", "c2"]
+        @test [p["functionResponse"]["id"] for p in c[3]["parts"]] == ["c2", "c1"]
+        tc = Dict("type" => "function", "function" => Dict("name" => "calc"))
+        @test build_payload(GeminiSchema(), "hi", M, nothing; tool_choice=tc)["toolConfig"]["functionCallingConfig"] ==
+              Dict("mode" => "ANY", "allowedFunctionNames" => ["calc"])
+        @test_throws ArgumentError build_payload(GeminiSchema(), "hi", M, nothing; tool_choice="bogus")
+        noargs = Dict("candidates" => [Dict("content" => Dict("parts" => [Dict("functionCall" => Dict("name" => "ping"))]))])
+        @test AIMessage(GeminiSchema(), noargs; model_id=M).tool_calls[1]["function"]["arguments"] == "{}"
+        ev = """{"candidates":[{"content":{"parts":[{"text":"A"},{"text":"B"}]}}]}"""
+        @test OpenRouter.extract_content(GeminiSchema(), StreamChunk(data=ev, json=JSON3.read(ev))) == "AB"
+    end
+
 end

@@ -261,6 +261,10 @@ end
         @test out[5]["content"][1]["image_url"]["url"] == img1
         @test out[5]["content"][2]["image_url"]["url"] == img2
         @test out[6]["role"] == "assistant"
+        # Gemini: both responses (and their images) stay in ONE user turn
+        gem = to_gemini_contents(img_msgs)
+        @test [c["role"] for c in gem] == ["user", "model", "user", "model"]
+        @test count(p -> haskey(p, "functionResponse"), gem[3]["parts"]) == 2
     end
 
     @testset "ToolMessage with document_data (PDF)" begin

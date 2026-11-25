@@ -86,13 +86,9 @@ Extract regular (non-reasoning) content from Gemini chunk.
         if !isempty(candidates)
             candidate = candidates[1]
             if haskey(candidate, :content) && haskey(candidate[:content], :parts)
-                parts = candidate[:content][:parts]
-                for part in parts
-                    # Only extract text that is NOT marked as thought
-                    if !get(part, :thought, false) && haskey(part, :text)
-                        return part[:text]
-                    end
-                end
+                # All text NOT marked as thought, joined (the final message joins them too)
+                texts = [p[:text] for p in candidate[:content][:parts] if !get(p, :thought, false) && haskey(p, :text)]
+                isempty(texts) || return join(texts)
             end
         end
     end
@@ -116,6 +112,7 @@ function build_response_body(schema::GeminiSchema, cb::AbstractLLMStream; verbos
     reasoning_parts = String[]
     function_call_parts = Any[]
     final_candidate = nothing
+    text_signature = nothing
     final_usage_metadata = nothing
 
     for chunk in cb.chunks
@@ -133,6 +130,8 @@ function build_response_body(schema::GeminiSchema, cb::AbstractLLMStream; verbos
             if haskey(candidate, :content) && haskey(candidate[:content], :parts)
                 parts = candidate[:content][:parts]
                 for part in parts
+                    # A non-functionCall signature may come on its own empty-text part
+                    !haskey(part, :functionCall) && haskey(part, :thoughtSignature) && (text_signature = part[:thoughtSignature])
                     if haskey(part, :text)
                         # Separate reasoning from regular content
                         if get(part, :thought, false)
@@ -170,6 +169,8 @@ function build_response_body(schema::GeminiSchema, cb::AbstractLLMStream; verbos
         if !isempty(full_content)
             push!(parts, Dict(:text => full_content))
         end
+        # Keep the text-part signature (replayable, see extract_reasoning_items) on the last text part
+        text_signature !== nothing && !isempty(parts) && (parts[end][:thoughtSignature] = text_signature)
         append!(parts, function_call_parts)
 
         if !isempty(parts)

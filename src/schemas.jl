@@ -377,7 +377,7 @@ Build contents array for GeminiSchema.
 
 Returns a tuple: (contents, system_instruction)
 """
-function build_messages(::GeminiSchema, prompt, sys_msg)
+function build_messages(::GeminiSchema, prompt, sys_msg; model_id=nothing)
     normalized = normalize_messages(prompt, sys_msg)
 
     # Extract first SystemMessage content, if any
@@ -390,7 +390,7 @@ function build_messages(::GeminiSchema, prompt, sys_msg)
     end
 
     # Convert all messages; SystemMessages are ignored by to_gemini_contents
-    contents = to_gemini_contents(normalized)
+    contents = to_gemini_contents(normalized; model_id)
     return contents, system_instruction
 end
 
@@ -398,7 +398,7 @@ end
 Build the request payload for GeminiSchema.
 """
 function build_payload(::GeminiSchema, prompt, model_id::AbstractString, sys_msg, stream::Bool = false; cache=nothing, kwargs...)
-    contents, system_instruction = build_messages(GeminiSchema(), prompt, sys_msg)
+    contents, system_instruction = build_messages(GeminiSchema(), prompt, sys_msg; model_id)
     
     payload = Dict{String, Any}(
         "contents" => contents
@@ -436,7 +436,7 @@ function build_payload(::GeminiSchema, prompt, model_id::AbstractString, sys_msg
             generation_config["stopSequences"] = v
         elseif sk == "reasoning_effort"
             # From a `(level)` suffix (OpenAI-style providers serving Gemini, e.g. OpenCode Go).
-            v in ("minimal", "low", "medium", "high") && (user_thinking_config["thinkingLevel"] = v)
+            v in ("minimal", "low", "medium", "high", "xhigh") && (user_thinking_config["thinkingLevel"] = v)
         elseif sk == "thinkingConfig"
             if v === false || v === nothing
                 user_thinking_config["__disabled__"] = true
@@ -462,6 +462,10 @@ function build_payload(::GeminiSchema, prompt, model_id::AbstractString, sys_msg
                 # Gemini default is AUTO — omit
             elseif v == "required" || v == "any"
                 payload["toolConfig"] = Dict("functionCallingConfig" => Dict("mode" => "ANY"))
+            elseif v isa AbstractDict && haskey(v, "function")   # {"type":"function","function":{"name":…}}
+                payload["toolConfig"] = Dict("functionCallingConfig" => Dict("mode" => "ANY", "allowedFunctionNames" => [v["function"]["name"]]))
+            else
+                throw(ArgumentError("unsupported tool_choice for Gemini: $(repr(v))"))
             end
         elseif sk == "stream"
             # Gemini controls streaming via URL, not payload — skip
@@ -502,13 +506,9 @@ function extract_content(::GeminiSchema, result::Dict)
     if haskey(result, "candidates") && length(result["candidates"]) > 0
         candidate = result["candidates"][1]
         if haskey(candidate, "content") && haskey(candidate["content"], "parts")
-            parts = candidate["content"]["parts"]
-            for part in parts
-                # Only extract non-reasoning text
-                if !get(part, "thought", false) && haskey(part, "text")
-                    return part["text"]
-                end
-            end
+            # All non-reasoning text, joined like the streaming path does
+            texts = [p["text"] for p in candidate["content"]["parts"] if !get(p, "thought", false) && haskey(p, "text")]
+            isempty(texts) || return join(texts)
         end
     end
     return nothing
@@ -593,7 +593,7 @@ function extract_tool_calls(::GeminiSchema, result::Dict)
                     tc = Dict{String,Any}(
                         "id" => get(fc, "id", "gemini_$(length(tool_calls))"),
                         "type" => "function",
-                        "function" => Dict("name" => fc["name"], "arguments" => JSON3.write(fc["args"]))
+                        "function" => Dict("name" => fc["name"], "arguments" => JSON3.write(get(fc, "args", Dict())))  # args omitted for zero-arg tools
                     )
                     # Preserve thoughtSignature for Gemini 3.1+ tool roundtrips
                     ts = get(part, "thoughtSignature", nothing)
@@ -612,6 +612,25 @@ Replayable reasoning state of a response (see `AIMessage.reasoning_items`); `not
 the schema has none or the provider sent no signed/encrypted reasoning.
 """
 extract_reasoning_items(::AbstractRequestSchema, result::Dict) = nothing
+
+# Every `thoughtSignature` in the model turn, in part order. The functionCall ones are also on
+# the tool_calls (replayed from there); listing them here makes `reasoning_model` bind them.
+function extract_reasoning_items(::GeminiSchema, result::Dict)
+    cands = get(result, "candidates", nothing)
+    (cands isa AbstractVector && !isempty(cands)) || return nothing
+    parts = get(get(cands[1], "content", Dict()), "parts", nothing)
+    parts isa AbstractVector || return nothing
+    items = Any[]
+    for p in parts
+        sig = get(p, "thoughtSignature", nothing)
+        (sig isa AbstractString && !isempty(sig)) || continue
+        # Only call/text signatures are replayable; model-generated media isn't sent back.
+        (haskey(p, "functionCall") || haskey(p, "text")) || continue
+        push!(items, Dict{String,Any}("type" => "thought_signature", "signature" => sig,
+                                      "part" => haskey(p, "functionCall") ? "functionCall" : "text"))
+    end
+    isempty(items) ? nothing : items
+end
 
 # Signed `thinking` and `redacted_thinking` blocks, in order. Unsigned thinking can't be replayed.
 function extract_reasoning_items(::AnthropicSchema, result::Dict)
