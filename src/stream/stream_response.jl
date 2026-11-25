@@ -9,7 +9,7 @@ Check if streaming is done for Response API format.
     if !isnothing(chunk.json)
         # Handle done chunks - response.completed signals the end
         chunk_type = get(chunk.json, "type", nothing)
-        return chunk_type == "response.completed"
+        return chunk_type in ("response.completed", "response.incomplete")
     end
     false
 end
@@ -74,7 +74,7 @@ function build_response_body(schema::ResponseSchema, cb::AbstractLLMStream; verb
     # Fast path: Check for the final response.completed chunk (usually the last one)
     # Use Iterators.reverse to avoid allocating a new array
     for chunk in Iterators.reverse(cb.chunks)
-        if !isnothing(chunk.json) && get(chunk.json, "type", nothing) == "response.completed"
+        if !isnothing(chunk.json) && get(chunk.json, "type", nothing) in ("response.completed", "response.incomplete")
             return get(chunk.json, "response", nothing)
         end
     end
@@ -112,32 +112,12 @@ function build_response_body(schema::ResponseSchema, cb::AbstractLLMStream; verb
         end
     end
     
-    # Heuristic reconstruction: 
-    # Usually index 0 is reasoning (if present) or message, index 1 is message.
-    # Without the final schema, we treat them as generic output items.
-    final_output = Any[]
-    
-    for idx in sort(collect(keys(content_map)))
-        text = content_map[idx]
-        # Simple heuristic: if we have multiple outputs, 0 might be reasoning
-        type = (idx == 0 && length(content_map) > 1) ? "reasoning" : "message"
-        
-        if type == "reasoning"
-            push!(final_output, Dict(
-                "type" => "reasoning",
-                "summary" => [text] # Rough approximation
-            ))
-        else
-            push!(final_output, Dict(
-                "type" => "message",
-                "role" => "assistant",
-                "content" => Any[Dict(
-                    "type" => "output_text",
-                    "text" => text
-                )]
-            ))
-        end
-    end
+    # Cut-off stream: content_map holds only output_text deltas (never encrypted reasoning).
+    final_output = Any[
+        Dict("type" => "message", "role" => "assistant",
+             "content" => Any[Dict("type" => "output_text", "text" => content_map[idx])])
+        for idx in sort(collect(keys(content_map)))
+    ]
     
     response["output"] = final_output
     merge!(response, metadata)

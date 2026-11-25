@@ -33,10 +33,24 @@ function build_payload(schema::ResponseSchema, prompt, model_id::AbstractString,
     system_msgs = filter(m -> m isa SystemMessage, normalized)
     input_msgs = filter(m -> !(m isa SystemMessage), normalized)
     
-    # Build input items (all methods return Vector for uniform flattening)
+    # Build input items (all methods return Vector for uniform flattening).
+    # ToolMessage attachments flush once after a run of consecutive ToolMessages so a user
+    # message never splits parallel function_call_outputs.
     input_items = Any[]
-    for msg in input_msgs
-        append!(input_items, msg isa AIMessage ? message_to_response_input(msg; model_id) : message_to_response_input(msg))
+    pending_tool_parts = Any[]
+    for (i, msg) in enumerate(input_msgs)
+        if msg isa ToolMessage
+            push!(input_items, Dict{String,Any}(
+                "type" => "function_call_output", "call_id" => msg.tool_call_id, "output" => msg.content))
+            append!(pending_tool_parts, _response_attachments(msg.image_data, msg.document_data))
+            next = i < length(input_msgs) ? input_msgs[i + 1] : nothing
+            if !(next isa ToolMessage) && !isempty(pending_tool_parts)
+                push!(input_items, Dict{String,Any}("type" => "message", "role" => "user", "content" => pending_tool_parts))
+                pending_tool_parts = Any[]
+            end
+        else
+            append!(input_items, msg isa AIMessage ? message_to_response_input(msg; model_id) : message_to_response_input(msg))
+        end
     end
     payload["input"] = input_items
     
@@ -54,11 +68,24 @@ function build_payload(schema::ResponseSchema, prompt, model_id::AbstractString,
     
     # Forward supported parameters (convert tools if present)
     for (k, v) in kwargs
-        if k in (:temperature, :top_p, :max_output_tokens, :tool_choice, 
+        v === nothing && continue
+        if k in (:temperature, :top_p, :max_output_tokens,
                  :parallel_tool_calls, :metadata, :text, :truncation,
                  :service_tier, :safety_identifier, :prompt_cache_key, :prompt_cache_retention,
                  :store, :include)
             payload[string(k)] = v
+        elseif k in (:max_tokens, :max_completion_tokens)
+            haskey(payload, "max_output_tokens") || (payload["max_output_tokens"] = v)
+        elseif k == :reasoning_effort
+            haskey(payload["reasoning"], "effort") || (payload["reasoning"] = merge(payload["reasoning"], Dict("effort" => v)))
+        elseif k == :tool_choice
+            # ChatCompletion wraps named tool_choice in {"type":"function","function":{"name":…}};
+            # Responses API expects flat {"type":"function","name":…}.
+            if v isa AbstractDict && haskey(v, "function")
+                payload["tool_choice"] = Dict{String,Any}("type" => "function", "name" => v["function"]["name"])
+            else
+                payload["tool_choice"] = v
+            end
         elseif k == :tools
             payload["tools"] = convert_tools(ResponseSchema(), v)
         end
@@ -67,18 +94,28 @@ function build_payload(schema::ResponseSchema, prompt, model_id::AbstractString,
     return payload
 end
 
+function _response_attachments(image_data, document_data)
+    parts = Any[]
+    for img in something(image_data, ())
+        push!(parts, isnothing(extract_image_attributes(img)) ?
+            Dict{String,Any}("type" => "input_text", "text" => INVALID_IMAGE_NOTICE) :
+            Dict{String,Any}("type" => "input_image", "image_url" => img))
+    end
+    for doc in something(document_data, ())
+        push!(parts, isnothing(extract_document_attributes(doc)) ?
+            Dict{String,Any}("type" => "input_text", "text" => INVALID_DOCUMENT_NOTICE) :
+            Dict{String,Any}("type" => "input_file", "filename" => "document.pdf", "file_data" => doc))
+    end
+    parts
+end
+
 # Convert message types to Response API input format (all return Vector for uniform flattening)
 function message_to_response_input(msg::UserMessage)
-    if msg.image_data !== nothing && !isempty(msg.image_data)
+    att = _response_attachments(msg.image_data, msg.document_data)
+    if !isempty(att)
         content = Any[]
         !isempty(msg.content) && push!(content, Dict{String,Any}("type" => "input_text", "text" => msg.content))
-        for img in msg.image_data
-            if isnothing(extract_image_attributes(img))
-                push!(content, Dict{String,Any}("type" => "input_text", "text" => INVALID_IMAGE_NOTICE))
-            else
-                push!(content, Dict{String,Any}("type" => "input_image", "image_url" => img))
-            end
-        end
+        append!(content, att)
         return [Dict("type" => "message", "role" => "user", "content" => content)]
     end
     [Dict("type" => "message", "role" => "user", "content" => msg.content)]
@@ -99,30 +136,12 @@ function message_to_response_input(msg::AIMessage; model_id=nothing)
             fn = tc["function"]
             push!(items, Dict{String,Any}(
                 "type" => "function_call", "call_id" => tc["id"],
-                "name" => fn["name"], "arguments" => fn["arguments"]
+                "name" => fn["name"], "arguments" => isempty(fn["arguments"]) ? "{}" : fn["arguments"]
             ))
         end
     end
     all(i -> get(i, "type", "") == "reasoning", items) &&
         push!(items, Dict("type" => "message", "role" => "assistant", "content" => msg.content))
-    return items
-end
-
-function message_to_response_input(msg::ToolMessage)
-    items = Any[Dict{String,Any}(
-        "type" => "function_call_output", "call_id" => msg.tool_call_id, "output" => msg.content
-    )]
-    if msg.image_data !== nothing && !isempty(msg.image_data)
-        img_content = Any[]
-        for img in msg.image_data
-            if isnothing(extract_image_attributes(img))
-                push!(img_content, Dict{String,Any}("type" => "input_text", "text" => INVALID_IMAGE_NOTICE))
-            else
-                push!(img_content, Dict{String,Any}("type" => "input_image", "image_url" => img))
-            end
-        end
-        push!(items, Dict{String,Any}("type" => "message", "role" => "user", "content" => img_content))
-    end
     return items
 end
 
@@ -170,7 +189,13 @@ end
 
 # Extract finish reason
 function extract_finish_reason(schema::ResponseSchema, response::Dict)
-    return get(response, "status", nothing)
+    status = get(response, "status", nothing)
+    if status == "incomplete"
+        details = get(response, "incomplete_details", nothing)
+        reason = details isa AbstractDict ? get(details, "reason", nothing) : nothing
+        reason !== nothing && return reason
+    end
+    return status
 end
 
 # Extract tokens from Response API usage format

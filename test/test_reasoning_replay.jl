@@ -201,4 +201,37 @@ using OpenRouter: AbstractMessage, UserMessage, AIMessage, ToolMessage,
         @test OpenRouter.extract_content(GeminiSchema(), StreamChunk(data=ev, json=JSON3.read(ev))) == "AB"
     end
 
+
+    @testset "Responses API: max_tokens, reasoning_effort, tool_choice, PDFs, incomplete stream" begin
+        p = build_payload(ResponseSchema(), "hi", "gpt-5.6-luna", nothing, false;
+            max_tokens=1234, reasoning_effort="high",
+            tool_choice=Dict("type" => "function", "function" => Dict("name" => "calc")))
+        @test p["max_output_tokens"] == 1234
+        @test p["reasoning"]["effort"] == "high"
+        @test p["tool_choice"] == Dict("type" => "function", "name" => "calc")
+        # explicit max_output_tokens wins over max_tokens
+        p2 = build_payload(ResponseSchema(), "hi", "gpt-5.6-luna", nothing, false; max_tokens=100, max_output_tokens=200)
+        @test p2["max_output_tokens"] == 200
+        # PDF attachment in UserMessage
+        pdf = "data:application/pdf;base64,JVBERi0xLjQgbWluaW1hbA=="
+        up = build_payload(ResponseSchema(), AbstractMessage[UserMessage(content="read", document_data=[pdf])], "gpt-5.6-luna", nothing, false)
+        @test up["input"][1]["content"][2] == Dict("type" => "input_file", "filename" => "document.pdf", "file_data" => pdf)
+        # response.incomplete stream surfaces max_output_tokens and usage
+        inc_ev = """{"type":"response.incomplete","response":{"id":"r1","status":"incomplete","incomplete_details":{"reason":"max_output_tokens"},"output":[{"type":"message","role":"assistant","content":[{"type":"output_text","text":"cut"}]}],"usage":{"input_tokens":10,"output_tokens":5,"total_tokens":15}}}"""
+        cb = HttpStreamHooks(schema=ResponseSchema(), out=devnull, reasoning_formatter=_ -> nothing, content_formatter=_ -> nothing)
+        c = StreamChunk(data=inc_ev, json=JSON3.read(inc_ev)); push!(cb, c)
+        @test OpenRouter.is_done(ResponseSchema(), c)
+        body = JSON3.read(JSON3.write(build_response_body(ResponseSchema(), cb)), Dict)
+        m = AIMessage(ResponseSchema(), body; model_id="gpt-5.6-luna")
+        @test m.content == "cut" && m.finish_reason == "max_output_tokens" && m.tokens.completion_tokens == 5
+        # cut-off stream (no terminal event): text kept, no fake reasoning items
+        cb2 = HttpStreamHooks(schema=ResponseSchema(), out=devnull, reasoning_formatter=_ -> nothing, content_formatter=_ -> nothing)
+        for ev in ("""{"type":"response.output_text.delta","output_index":0,"delta":"part1 "}""",
+                   """{"type":"response.output_text.delta","output_index":1,"delta":"part2"}""")
+            push!(cb2, StreamChunk(data=ev, json=JSON3.read(ev)))
+        end
+        m2 = AIMessage(ResponseSchema(), JSON3.read(JSON3.write(build_response_body(ResponseSchema(), cb2)), Dict); model_id="gpt-5.6-luna")
+        @test m2.content == "part1 part2" && m2.reasoning_items === nothing && m2.finish_reason == "incomplete"
+    end
+
 end

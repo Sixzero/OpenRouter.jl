@@ -265,6 +265,10 @@ end
         gem = to_gemini_contents(img_msgs)
         @test [c["role"] for c in gem] == ["user", "model", "user", "model"]
         @test count(p -> haskey(p, "functionResponse"), gem[3]["parts"]) == 2
+        # ResponseSchema: both function_call_outputs precede the single batched image user message
+        rp = build_payload(ResponseSchema(), img_msgs, "gpt-5", nothing, false)["input"]
+        @test [x["type"] for x in rp] == ["message", "function_call", "function_call", "function_call_output", "function_call_output", "message", "message"]
+        @test length(rp[6]["content"]) == 2 && rp[6]["content"][1]["image_url"] == img1 && rp[6]["content"][2]["image_url"] == img2
     end
 
     @testset "ToolMessage with document_data (PDF)" begin
