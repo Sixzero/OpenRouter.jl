@@ -91,6 +91,14 @@ function build_payload(schema::ResponseSchema, prompt, model_id::AbstractString,
         end
     end
     
+    # Route every turn of one conversation to the same prompt-cache shard (and let
+    # CLIProxyAPI scope Codex caching on /v1/responses, where headers alone don't).
+    if !haskey(payload, "prompt_cache_key")
+        sid = current_session_id()
+        isempty(sid) && (sid = get(ENV, "TODOFORAI_TODO_ID", ""))
+        isempty(sid) || (payload["prompt_cache_key"] = first(sid, 64))
+    end
+
     return payload
 end
 

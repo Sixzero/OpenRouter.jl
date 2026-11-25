@@ -234,4 +234,22 @@ using OpenRouter: AbstractMessage, UserMessage, AIMessage, ToolMessage,
         @test m2.content == "part1 part2" && m2.reasoning_items === nothing && m2.finish_reason == "incomplete"
     end
 
+    @testset "Responses API: prompt_cache_key defaults from session id" begin
+        prev = OpenRouter.current_session_id()
+        prev_env = get(ENV, "TODOFORAI_TODO_ID", nothing)
+        try
+            delete!(ENV, "TODOFORAI_TODO_ID")
+            OpenRouter.set_session_id!("")
+            @test !haskey(build_payload(ResponseSchema(), "hi", "gpt-5.6-luna", nothing, false), "prompt_cache_key")
+            OpenRouter.set_session_id!("todo-abc-123")
+            @test build_payload(ResponseSchema(), "hi", "gpt-5.6-luna", nothing, false)["prompt_cache_key"] == "todo-abc-123"
+            @test build_payload(ResponseSchema(), "hi", "gpt-5.6-luna", nothing, false; prompt_cache_key="explicit")["prompt_cache_key"] == "explicit"
+            OpenRouter.set_session_id!("x"^80)
+            @test length(build_payload(ResponseSchema(), "hi", "gpt-5.6-luna", nothing, false)["prompt_cache_key"]) == 64
+        finally
+            OpenRouter.set_session_id!(prev)
+            prev_env === nothing ? delete!(ENV, "TODOFORAI_TODO_ID") : (ENV["TODOFORAI_TODO_ID"] = prev_env)
+        end
+    end
+
 end
