@@ -105,7 +105,7 @@ using Aqua
     end
 
     @testset "openrouter_eu: Claude prompt caching + cache-write billing" begin
-        @test OpenRouter.EU_PRICE_FACTOR == 1.3
+        @test OpenRouter.EU_PRICE_FACTOR == 1.1
         eu, gw = OpenRouter.get_provider_info("openrouter_eu"), OpenRouter.get_provider_info("openrouter")
         pl(info, id, cache) = OpenRouter.gateway_payload!(Dict{String,Any}(), info, id, cache)
         @test pl(eu, "anthropic/claude-sonnet-5.5", :all)["cache_control"] == Dict("type" => "ephemeral")

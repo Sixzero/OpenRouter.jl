@@ -296,8 +296,8 @@ function find_provider_endpoint(cached_model::CachedModel, provider::AbstractStr
 end
 
 """EU in-region price over the author's list price. Providers charge ~+10% in-region (OpenRouter EU,
-Bedrock/Vertex EU); +30% keeps a margin after top-up fees. Shown in the picker as shared-fer EU_PRICE_FACTOR."""
-const EU_PRICE_FACTOR = 1.3
+Bedrock/Vertex EU); +10% passes that cost through at list price × 1.1. Shown in the picker as shared-fer EU_PRICE_FACTOR."""
+const EU_PRICE_FACTOR = 1.1
 
 """
 Billing price for an OpenRouter gateway: the model author's own catalog endpoint (anthropic, openai, …;
