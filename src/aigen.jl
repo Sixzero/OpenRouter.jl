@@ -363,6 +363,14 @@ function parse_provider_model(provider_model::AbstractString; endpoint_fetcher=l
 
     # Get the cached model with endpoints
     cached_model = get_model(lookup_model_id; fetch_endpoints=true, endpoint_fetcher=endpoint_fetcher)
+    # OpenCode Go lists models OpenRouter never will (stealth/free ids like `hungerg-free`):
+    # pass them through and let Go answer. Zero-priced (flat subscription); an id Go
+    # doesn't serve fails there with its own error.
+    if cached_model === nothing && lc_name == "opencode_go"
+        @warn "opencode_go: $lookup_model_id not in the catalog, passing through unpriced"
+        transformed_model_id = transform_model_name(provider_info, lookup_model_id) * model_suffix
+        return provider_info, transformed_model_id, create_stub_endpoint_zero_pricing(provider_name, lookup_model_id)
+    end
     if cached_model === nothing
         # For other providers, this is an error - show helpful message
         available_models = list_models(lowercase(provider_name))

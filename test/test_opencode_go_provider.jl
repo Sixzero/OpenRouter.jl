@@ -17,6 +17,11 @@ include(joinpath(@__DIR__, "..", "scripts", "export_models_json.jl"))
     @test endpoint.provider_name == "opencode_go"
     @test endpoint.pricing !== nothing
 
+    # Ids OpenRouter doesn't list (Go-only stealth/free models) pass through unpriced.
+    _, model_id, endpoint = parse_provider_model("opencode_go:stepfun/hungerg-free(high)")
+    @test model_id == "hungerg-free(high)"
+    @test endpoint.pricing.prompt == "0"
+
     # Gemini ids ride the Gemini-native protocol; everything else stays chat/completions.
     @test OpenRouter.get_provider_schema(info, "gemini-4-argon") isa GeminiSchema
     @test OpenRouter.opencode_go_model_transform("google/gemini-4-argon") == "gemini-4-argon"
