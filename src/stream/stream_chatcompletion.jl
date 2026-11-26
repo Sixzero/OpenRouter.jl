@@ -161,16 +161,16 @@ function build_response_body(schema::ChatCompletionSchema, cb::AbstractLLMStream
                     tc_index = get(tc, :index, 0)
                     tc_dict = get!(tool_calls_acc, tc_index, Dict{Symbol, Any}())
 
-                    tc_id = get(tc, :id, nothing)
+                    tc_id = _set_field(get(tc, :id, nothing))
                     !isnothing(tc_id) && (tc_dict[:id] = tc_id)
 
-                    tc_type = get(tc, :type, nothing)
+                    tc_type = _set_field(get(tc, :type, nothing))
                     !isnothing(tc_type) && (tc_dict[:type] = tc_type)
 
                     tc_func = get(tc, :function, nothing)
                     if !isnothing(tc_func)
                         func_dict = get(tc_dict, :function, Dict{Symbol, Any}())
-                        func_name = get(tc_func, :name, nothing)
+                        func_name = _set_field(get(tc_func, :name, nothing))
                         !isnothing(func_name) && (func_dict[:name] = func_name)
                         func_args = get(tc_func, :arguments, nothing)
                         !isnothing(func_args) && (func_dict[:arguments] = get(func_dict, :arguments, "") * func_args)

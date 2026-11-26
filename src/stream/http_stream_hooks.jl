@@ -194,7 +194,10 @@ extract_ttft_ms(schema::AbstractRequestSchema, chunk::AbstractStreamChunk) = not
 const NO_TOOL_DELTAS = NamedTuple{(:index, :id, :name, :args), Tuple{Int, Any, Any, String}}[]
 extract_tool_deltas(::AbstractRequestSchema, chunk::AbstractStreamChunk) = NO_TOOL_DELTAS
 
-_tool_delta(index, id, name, args) = (; index=Int(index), id, name, args=string(something(args, "")))
+# Some OpenAI-compatible hosts (OpenCode Go hungerg-free) repeat `"id":"","name":""` on every
+# continuation chunk; empty means "not sent", never "rename to empty".
+_set_field(x) = x isa AbstractString && isempty(x) ? nothing : x
+_tool_delta(index, id, name, args) = (; index=Int(index), id=_set_field(id), name=_set_field(name), args=string(something(args, "")))
 
 function extract_tool_deltas(::ChatCompletionSchema, chunk::AbstractStreamChunk)
     isnothing(chunk.json) && return NO_TOOL_DELTAS

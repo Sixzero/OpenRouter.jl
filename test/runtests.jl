@@ -459,6 +459,7 @@ using Aqua
 
     # ChatCompletion delta.images (CLIProxyAPI Codex image_generation) -> AIMessage.image_data
     include("test_chatcompletion_images.jl")
+    include("test_chatcompletion_tool_stream.jl")
 
     # Mistral reasoning models: content as thinking/text block arrays
     include("test_mistral_content_blocks.jl")
